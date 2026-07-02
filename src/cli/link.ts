@@ -23,12 +23,34 @@ async function renderQr(qr: string): Promise<void> {
 }
 
 /**
+ * Decide whether an already-connected `link` should nudge the user toward
+ * linking an ADDITIONAL number. True only for a bare `whatsappman link` (no
+ * explicit label) that lands on a live number — the classic "I wanted to add a
+ * second number but didn't know it needs its own label" case. An explicit
+ * `link <label>` or a `relink` just reports the connected state as-is.
+ * Pure + exported so the multi-number on-ramp is unit-testable without IPC.
+ */
+export function shouldSuggestAdditionalNumber(
+  method: 'link' | 'relink',
+  explicit: boolean,
+  status: string,
+): boolean {
+  return method === 'link' && !explicit && status === 'connected';
+}
+
+/**
  * Link a WhatsApp number. Starts the daemon if needed, asks it to begin
  * pairing, renders the QR in the terminal, and polls until the number connects.
  * The actual QR scan is done by the user on their phone.
  */
 export async function runLink(rawLabel: string | undefined): Promise<number> {
-  return linkFlow(normalizeLabel(rawLabel ?? 'default'), 'link');
+  // `explicit` distinguishes `link work` / `link --label work` (the user wants a
+  // specific number) from a bare `link` (defaults to "default"). It changes what
+  // we show when the target is already connected: an explicit label just reports
+  // "already connected", but a bare `link` on a live default means the user most
+  // likely wants to ADD another number — so we guide them to a labelled link.
+  const explicit = rawLabel != null && rawLabel.trim() !== '';
+  return linkFlow(normalizeLabel(rawLabel ?? 'default'), 'link', explicit);
 }
 
 /** Re-pair an expired/logged-out number with a fresh QR (keeps history). */
@@ -39,10 +61,14 @@ export async function runRelink(rawLabel: string | undefined): Promise<number> {
     outro('relink');
     return 1;
   }
-  return linkFlow(normalizeLabel(rawLabel), 'relink');
+  return linkFlow(normalizeLabel(rawLabel), 'relink', true);
 }
 
-async function linkFlow(label: string, method: 'link' | 'relink'): Promise<number> {
+async function linkFlow(
+  label: string,
+  method: 'link' | 'relink',
+  explicit: boolean,
+): Promise<number> {
   // Pairing renders a QR to scan — pointless (and would hang polling) without a
   // real terminal, so refuse early in an AI-tool shell / pipe.
   if (!requireTty(`whatsappman ${method}`)) return 1;
@@ -69,6 +95,18 @@ async function linkFlow(label: string, method: 'link' | 'relink'): Promise<numbe
   if (state.status === 'connected') {
     section('done');
     fact(`"${label}" is already connected`, true);
+    // A bare `whatsappman link` (no label) that lands on an already-connected
+    // number almost always means the user wanted to add ANOTHER number but did
+    // not realise each one needs its own label. Point the way instead of
+    // dead-ending — this is the multi-number on-ramp.
+    if (shouldSuggestAdditionalNumber(method, explicit, state.status)) {
+      row('');
+      row('to link an ADDITIONAL number, give it its own label:');
+      row('  whatsappman link --label <name>     (e.g. --label work)');
+      row('then pick which one Claude sends from by default:');
+      row('  whatsappman default <name>');
+      row('see all linked numbers with:  whatsappman numbers');
+    }
     outro(method);
     return 0;
   }

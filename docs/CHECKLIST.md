@@ -72,7 +72,8 @@ items lifted/adapted from the `@mcphub/plugin-baileys-whatsapp` plugin's
 - [x] `send_bulk` — `defaultDelayMs` throttle, `maxBulkRecipients` cap (`BULK_LIMIT_EXCEEDED`), per-recipient results; CLI `send-bulk` (CLI-only, not an MCP tool)
 - [x] Unit tests (24 total): attachment resolution + caps + forbidden paths (6), bulk cap/empty (3)
 - [x] Verified: CLI help lists all commands; MCP surface unchanged (8 tools, still **no raw send**); `draft_message` advertises all 5 kinds
-- [ ] **Manual sign-off (needs 2 phones)**: link a second number, send from each via `--from`, confirm routing + a real image/document delivery.
+- [x] **Multi-number linking verified (2026-07-02)**: with `default` connected, `whatsappman link --label <name>` emits a fresh scannable QR for a *second* number (proved live with a throwaway `test` label; sessions are keyed independently, so a connected number never blocks adding another). Fixed a discoverability dead-end: a bare `whatsappman link` on an already-connected default now guides the user to `link --label <name>` + `default <name>` instead of stopping at "already connected" (`shouldSuggestAdditionalNumber`, unit-tested).
+- [ ] **Manual sign-off (needs 2 phones)**: scan the 2nd QR, send from each via `--from`, confirm routing + a real image/document delivery. *(linking half verified above; only the real 2-phone delivery remains)*
 
 ## Phase 5 — Daemon install & OS lifecycle (always-on) ✅ DONE
 

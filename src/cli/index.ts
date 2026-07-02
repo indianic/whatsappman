@@ -209,7 +209,7 @@ function printHelp(): void {
   row('restart          restart the daemon');
   row('status           daemon + linked-number status');
   section('numbers');
-  row('link [--label n]     link a WhatsApp number (scan a QR)');
+  row('link [--label n]     link a number (scan a QR); pass --label to add MORE');
   row('relink <label>       re-pair an expired number (fresh QR)');
   row('reconnect <label>    reconnect a dropped session');
   row('disconnect <label>   drop the socket, keep creds');
