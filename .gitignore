@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+# runtime state (created under ~/.whatsappman at runtime, never in-repo — listed
+# defensively in case a test writes a local ./.whatsappman via WHATSAPPMAN_DIR)
+.whatsappman/
+.env
+.env.*

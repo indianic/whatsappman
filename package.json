@@ -1,0 +1,58 @@
+{
+  "name": "@indianic/whatsappman",
+  "version": "0.1.0",
+  "description": "MCP server + CLI to send WhatsApp messages (text, image, document, location, contact) from any Claude CLI session, via a Baileys-backed always-on local daemon — multi-number, draft/confirm, no third-party API, no server, no database. macOS, Linux, Windows.",
+  "author": "kalpesh",
+  "type": "module",
+  "publishConfig": {
+    "registry": "https://npm.indianic.in/"
+  },
+  "bin": {
+    "whatsappman": "bin/whatsappman.js",
+    "mcp-whatsappman": "bin/whatsappman.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "bin",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "whatsapp",
+    "baileys",
+    "claude",
+    "daemon"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@whiskeysockets/baileys": "^6.7.0",
+    "mime-types": "^3.0.0",
+    "open": "^10.1.0",
+    "picocolors": "^1.1.1",
+    "pino": "^9.0.0",
+    "qrcode": "^1.5.4",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/mime-types": "^3.0.0",
+    "@types/node": "^20.14.0",
+    "@types/qrcode": "^1.5.0",
+    "eslint": "^10.0.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}
