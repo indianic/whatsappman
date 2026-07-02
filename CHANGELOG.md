@@ -2,6 +2,11 @@
 
 All notable changes to `@indianic/whatsappman` are documented here.
 
+## [0.2.1] - 2026-07-02
+
+- feat(register): `register --write [--tools …] [--project]` now wires up every supported AI tool, not just Claude Code — Cursor, Gemini CLI, Windsurf (JSON `mcpServers` merge) and Codex (`[mcp_servers.whatsappman]` TOML). Idempotent, preserves unrelated servers; Claude Code still goes through the official `claude mcp add`.
+- fix(cli): a bare `whatsappman link` on an already-connected number no longer dead-ends at "already connected" — it now points you to `link --label <name>` + `default <name>` so adding a second number is discoverable. Multi-number linking verified live (a connected number never blocks another's QR).
+
 ## [0.2.0] - 2026-07-02
 
 - feat(cli): passive "update available" notifier — cached, non-blocking, TTY-only notice shown before command output when a newer version is published (mirrors mailman); refreshes via a detached background process, opt out with `NO_UPDATE_NOTIFIER` / `WHATSAPPMAN_NO_UPDATE_NOTIFIER`.
