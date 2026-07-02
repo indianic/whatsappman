@@ -61,16 +61,18 @@ items lifted/adapted from the `@mcphub/plugin-baileys-whatsapp` plugin's
 - [x] Unit tests (15 total): draft TTL/state machine, `confirm_send` idempotency (markSent replay), cancel-only-pending, `get`→undefined after restart (→ `DRAFT_NOT_FOUND`)
 - [ ] **Manual sign-off (needs a connected number)**: draft → confirm a real message from a Claude session; kill the daemon mid-draft and confirm `confirm_send` returns `DRAFT_NOT_FOUND` (never a half-send).
 
-## Phase 4 — Multiple numbers + the rest of the message kinds
+## Phase 4 — Multiple numbers + the rest of the message kinds ✅ DONE
 
-- [ ] Attachment resolution: `path` → buffer, mimetype inference (`mime-types`), per-file size cap (`ATTACHMENT_TOO_LARGE` / `ATTACHMENT_NOT_FOUND`)
-- [ ] `message-service`: `sendImage`, `sendDocument`, `sendLocation`, `sendContact` **[reuse: plugin standalone message-service]**
-- [ ] `draft_message` handles all five kinds
-- [ ] Multi-session proven: `link` a second number, `from` routes correctly, default vs. explicit
-- [ ] `numbers` / `status <label>` / `reconnect` / `disconnect` / `relink` CLI commands
-- [ ] `delete <label>` CLI (closes socket, removes `sessions/<label>/`, `--yes` gated) — **not** an MCP tool
-- [ ] `send_bulk` — throttle via `settings.defaultDelayMs`, `maxBulkRecipients` cap (`BULK_LIMIT_EXCEEDED`), per-recipient results
-- [ ] Unit tests: attachment resolution + caps, `from` routing across sessions, bulk throttle + cap
+- [x] Attachment resolution (`src/daemon/attachments.ts`): `path` → absolute + mimetype (`mime-types`) + size cap (`ATTACHMENT_TOO_LARGE` / `ATTACHMENT_NOT_FOUND`), **plus a sensitive-path denylist (`~/.ssh`, `~/.aws`, `~/.gnupg`, keychains, `*.env`/`*.pem`/`*.key`, id_rsa, the whatsappman config dir) → `ATTACHMENT_FORBIDDEN`** (exfiltration guard — pulled forward from Phase 8)
+- [x] `SessionManager.sendDraft` dispatches all kinds: `image`, `document`, `location`, `contact` (vcard) **[reuse: plugin message-service]** — file bytes read at send time, not held in the draft
+- [x] `draft_message` handles all five kinds (zod discriminated params + MCP schema)
+- [x] Multi-session: `from` routing (explicit → default → sole-session) via `resolveLabel`; `set_default` single source of truth
+- [x] `numbers` / `status <label>` / `reconnect` / `disconnect` / `relink` CLI commands (relink shares the QR-poll loop with link)
+- [x] `delete <label>` CLI (closes socket, removes `sessions/<label>/`, clears default if it was this, `--yes` gated) — **not** an MCP tool
+- [x] `send_bulk` — `defaultDelayMs` throttle, `maxBulkRecipients` cap (`BULK_LIMIT_EXCEEDED`), per-recipient results; CLI `send-bulk` (CLI-only, not an MCP tool)
+- [x] Unit tests (24 total): attachment resolution + caps + forbidden paths (6), bulk cap/empty (3)
+- [x] Verified: CLI help lists all commands; MCP surface unchanged (8 tools, still **no raw send**); `draft_message` advertises all 5 kinds
+- [ ] **Manual sign-off (needs 2 phones)**: link a second number, send from each via `--from`, confirm routing + a real image/document delivery.
 
 ## Phase 5 — Daemon install & OS lifecycle (always-on)
 

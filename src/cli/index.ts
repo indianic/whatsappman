@@ -1,8 +1,9 @@
 import { intro, outro, section, row, fail, attention } from './tree.js';
 import { renderStatus, renderNumbers } from './render-status.js';
 import { startDaemon, stopDaemon, restartDaemon } from './daemon-control.js';
-import { runLink } from './link.js';
-import { runSend } from './send.js';
+import { runLink, runRelink } from './link.js';
+import { runSend, runSendMedia, runSendBulk } from './send.js';
+import { runReconnect, runDisconnect, runDelete, runStatusOne } from './sessions.js';
 import { request } from '../ipc/client.js';
 import { offlineStatus, diskSessionSummaries, type StatusReport } from '../status.js';
 import type { SessionSummary } from '../status.js';
@@ -15,13 +16,25 @@ const COMMANDS = [
   'stop',
   'restart',
   'link',
+  'relink',
+  'reconnect',
+  'disconnect',
+  'delete',
   'numbers',
   'default',
   'send',
+  'send-bulk',
   'help',
   'examples',
   'version',
 ];
+
+function hasFlag(args: string[], flag: string): boolean {
+  const i = args.indexOf(flag);
+  if (i === -1) return false;
+  args.splice(i, 1);
+  return true;
+}
 
 /** Pull a `--flag value` out of an args array, returning the value (or undefined). */
 function takeFlag(args: string[], flag: string): string | undefined {
@@ -67,11 +80,20 @@ function printHelp(): void {
   row('restart          restart the daemon');
   row('status           daemon + linked-number status');
   section('numbers');
-  row('link [--label n] link a WhatsApp number (scan a QR)');
-  row('numbers          list linked numbers + status');
-  row('default <label>  set the default number for sends');
+  row('link [--label n]     link a WhatsApp number (scan a QR)');
+  row('relink <label>       re-pair an expired number (fresh QR)');
+  row('reconnect <label>    reconnect a dropped session');
+  row('disconnect <label>   drop the socket, keep creds');
+  row('delete <label>       permanently remove a number (--yes)');
+  row('numbers              list linked numbers + status');
+  row('status <label>       detail for one number');
+  row('default <label>      set the default number for sends');
   section('send');
-  row('send <to> <text> [--from <label>]   send a text message');
+  row('send <to> <text> [--from <label>]');
+  row('send <to> --kind image|document --path <file> [--caption c]');
+  row('send <to> --kind location --lat <n> --lng <n> [--name p]');
+  row('send <to> --kind contact --contact-name n --contact-phone p');
+  row('send-bulk <text> --to <a,b,c> [--from <label>]');
   section('general');
   row('help             this list');
   row('examples         setup + usage examples');
@@ -101,12 +123,27 @@ export async function cliMain(args: string[]): Promise<number> {
 
   switch (cmd) {
     case 'status':
+      if (args[1]) return runStatusOne(args[1]);
       await runStatus();
       return 0;
 
     case 'link': {
       const label = takeFlag(args, '--label') ?? args[1];
       return runLink(label);
+    }
+
+    case 'relink':
+      return runRelink(args[1]);
+
+    case 'reconnect':
+      return runReconnect(args[1]);
+
+    case 'disconnect':
+      return runDisconnect(args[1]);
+
+    case 'delete': {
+      const yes = hasFlag(args, '--yes');
+      return runDelete(args[1], yes);
     }
 
     case 'numbers':
@@ -142,7 +179,37 @@ export async function cliMain(args: string[]): Promise<number> {
 
     case 'send': {
       const from = takeFlag(args, '--from');
+      const kind = takeFlag(args, '--kind');
+      const path = takeFlag(args, '--path');
+      const caption = takeFlag(args, '--caption');
+      const name = takeFlag(args, '--name');
+      const lat = takeFlag(args, '--lat');
+      const lng = takeFlag(args, '--lng');
+      const contactName = takeFlag(args, '--contact-name');
+      const contactPhone = takeFlag(args, '--contact-phone');
       const to = args[1];
+
+      if (kind && kind !== 'text') {
+        if (!to) {
+          intro('whatsappman — send');
+          fail('usage: whatsappman send <to> --kind image|document|location|contact ...');
+          outro('send');
+          return 1;
+        }
+        return runSendMedia({
+          from,
+          to,
+          kind: kind as 'image' | 'document' | 'location' | 'contact',
+          path,
+          caption: caption ?? (args.slice(2).join(' ') || undefined),
+          latitude: lat != null ? Number(lat) : undefined,
+          longitude: lng != null ? Number(lng) : undefined,
+          name,
+          contactName,
+          contactPhone,
+        });
+      }
+
       const text = args.slice(2).join(' ');
       if (!to || !text) {
         intro('whatsappman — send');
@@ -151,6 +218,20 @@ export async function cliMain(args: string[]): Promise<number> {
         return 1;
       }
       return runSend(to, text, from);
+    }
+
+    case 'send-bulk': {
+      const from = takeFlag(args, '--from');
+      const toCsv = takeFlag(args, '--to');
+      const text = args.slice(1).join(' ');
+      if (!toCsv || !text) {
+        intro('whatsappman — send-bulk');
+        fail('usage: whatsappman send-bulk <text> --to <comma,separated,recipients> [--from <label>]');
+        outro('send-bulk');
+        return 1;
+      }
+      const recipients = toCsv.split(',').map((r) => r.trim()).filter(Boolean);
+      return runSendBulk(recipients, text, from);
     }
 
     case 'start': {

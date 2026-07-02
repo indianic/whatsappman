@@ -22,37 +22,49 @@ async function renderQr(qr: string): Promise<void> {
 }
 
 /**
- * Link (or relink) a WhatsApp number. Starts the daemon if needed, asks it to
- * begin pairing, renders the QR in the terminal, and polls until the number
- * connects (or the session reports it needs relinking / times out). The actual
- * QR scan is done by the user on their phone.
+ * Link a WhatsApp number. Starts the daemon if needed, asks it to begin
+ * pairing, renders the QR in the terminal, and polls until the number connects.
+ * The actual QR scan is done by the user on their phone.
  */
 export async function runLink(rawLabel: string | undefined): Promise<number> {
-  const label = normalizeLabel(rawLabel ?? 'default');
+  return linkFlow(normalizeLabel(rawLabel ?? 'default'), 'link');
+}
 
-  intro(`whatsappman — link "${label}"`);
+/** Re-pair an expired/logged-out number with a fresh QR (keeps history). */
+export async function runRelink(rawLabel: string | undefined): Promise<number> {
+  if (!rawLabel) {
+    intro('whatsappman — relink');
+    fail('usage: whatsappman relink <label>');
+    outro('relink');
+    return 1;
+  }
+  return linkFlow(normalizeLabel(rawLabel), 'relink');
+}
+
+async function linkFlow(label: string, method: 'link' | 'relink'): Promise<number> {
+  intro(`whatsappman — ${method} "${label}"`);
 
   if (!isDaemonAlive()) {
     row('starting daemon…');
     const ok = await startDaemon();
     if (!ok) {
       fail('could not start the daemon — see ~/.whatsappman/logs/daemon.err.log');
-      outro('link');
+      outro(method);
       return 1;
     }
   }
 
   let state: LinkState;
   try {
-    state = await request<LinkState>('link', { label });
+    state = await request<LinkState>(method, { label });
   } catch (err) {
-    return failWith(err);
+    return failWith(err, method);
   }
 
   if (state.status === 'connected') {
     section('done');
     fact(`"${label}" is already connected`, true);
-    outro('link');
+    outro(method);
     return 0;
   }
 
@@ -68,35 +80,30 @@ export async function runLink(rawLabel: string | undefined): Promise<number> {
     if (state.status === 'connected') {
       section('done');
       fact(`"${label}" linked and connected`, true);
-      outro('link');
+      outro(method);
       return 0;
-    }
-    if (state.status === 'needs_relink' || state.status === 'logged_out') {
-      fail(`"${label}" reported ${state.status} — try again`);
-      outro('link');
-      return 1;
     }
 
     await sleep(POLL_INTERVAL_MS);
     try {
       state = await request<LinkState>('link_status', { label });
     } catch (err) {
-      return failWith(err);
+      return failWith(err, method);
     }
   }
 
-  attention('timed out waiting for the QR to be scanned — run link again to retry');
-  outro('link');
+  attention(`timed out waiting for the QR to be scanned — run ${method} again to retry`);
+  outro(method);
   return 1;
 }
 
-function failWith(err: unknown): number {
+function failWith(err: unknown, method: string): number {
   if (err instanceof WhatsAppManError) {
     fail(`${err.code}: ${err.message}`);
     for (const step of err.nextSteps ?? []) row(step);
   } else {
     fail(String((err as Error)?.message ?? err));
   }
-  outro('link');
+  outro(method);
   return 1;
 }

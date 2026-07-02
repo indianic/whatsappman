@@ -9,7 +9,7 @@ import { readSettings } from '../config/state.js';
  * and get() returning the sent draft unchanged on replay.
  */
 
-export type DraftKind = 'text';
+export type DraftKind = 'text' | 'image' | 'document' | 'location' | 'contact';
 export type DraftState = 'pending' | 'sent' | 'cancelled';
 
 export interface SendResultData {
@@ -18,25 +18,40 @@ export interface SendResultData {
   sentAt: string;
 }
 
-export interface Draft {
+export interface AttachmentRef {
+  absPath: string;
+  filename: string;
+  mimetype: string;
+  sizeBytes: number;
+}
+
+/** The per-kind content of a draft. Only the fields relevant to `kind` are set. */
+export interface DraftPayload {
+  kind: DraftKind;
+  text?: string; // text body, or caption for image/document
+  attachment?: AttachmentRef; // image/document
+  latitude?: number; // location
+  longitude?: number; // location
+  locationName?: string; // location
+  contactName?: string; // contact
+  contactPhone?: string; // contact
+}
+
+export interface Draft extends DraftPayload {
   id: string;
   from: string; // session label
   toJid: string;
   toName: string;
-  kind: DraftKind;
-  text: string;
   createdAtMs: number;
   expiresAtMs: number;
   state: DraftState;
   result?: SendResultData;
 }
 
-export interface NewDraft {
+export interface NewDraft extends DraftPayload {
   from: string;
   toJid: string;
   toName: string;
-  kind: DraftKind;
-  text: string;
 }
 
 export class DraftStore {

@@ -30,6 +30,7 @@ const obj = (props: Record<string, unknown>, required: string[] = []) => ({
   additionalProperties: false,
 });
 const str = (description: string) => ({ type: 'string', description });
+const num = (description: string) => ({ type: 'number', description });
 
 const TOOLS: Record<string, ToolDef> = {
   get_status: {
@@ -65,14 +66,21 @@ const TOOLS: Record<string, ToolDef> = {
   },
   draft_message: {
     description:
-      'Build a preview of a text message and store it as a draft. Does NOT send. Returns { draftId, preview, expiresInSec }. Show the preview to the user and get explicit confirmation, then call confirm_send.',
+      'Build a preview of a message and store it as a draft. Does NOT send. Supports kind=text|image|document|location|contact. For image/document, pass an absolute file `path` (sensitive paths like ~/.ssh or .env are refused) with optional `text` caption. Returns { draftId, preview, expiresInSec }. Show the preview to the user and get explicit confirmation, then call confirm_send.',
     inputSchema: obj(
       {
         from: str('session label; omit for the default number'),
         to: str('recipient: a saved contact/group name, a phone number, or a JID'),
-        text: str('the message body'),
+        kind: { type: 'string', enum: ['text', 'image', 'document', 'location', 'contact'], description: 'message kind (default text)' },
+        text: str('message body (kind=text) or caption (image/document)'),
+        path: str('absolute file path for kind=image|document'),
+        latitude: num('latitude for kind=location'),
+        longitude: num('longitude for kind=location'),
+        name: str('place name for kind=location'),
+        contactName: str('display name for kind=contact'),
+        contactPhone: str('phone number for kind=contact'),
       },
-      ['to', 'text'],
+      ['to'],
     ),
     method: 'draft_message',
   },

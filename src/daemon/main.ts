@@ -9,10 +9,11 @@ import { startIpcServer, type Handler } from '../ipc/server.js';
 import { removeStaleSocket } from '../ipc/transport.js';
 import { buildStatus } from '../status.js';
 import { SessionManager } from './session-manager.js';
-import { DraftStore } from './draft-store.js';
+import { DraftStore, type NewDraft } from './draft-store.js';
+import { resolveAttachment } from './attachments.js';
 import { normalizeLabel, listSessionLabels } from '../config/sessions.js';
 import { WhatsAppManError, ErrorCode } from '../errors.js';
-import type { Method, SendTextParams, DraftMessageParams } from '../ipc/protocol.js';
+import type { Method, SendTextParams, SendBulkParams, DraftMessageParams } from '../ipc/protocol.js';
 import type { State } from '../config/schema.js';
 
 /**
@@ -74,6 +75,37 @@ export async function runDaemon(): Promise<void> {
         return sm.sendText(labelFrom(p.from), p.to, p.text);
       },
     ],
+    [
+      'send_bulk',
+      async (params) => {
+        const p = params as SendBulkParams;
+        return sm.sendBulk(labelFrom(p.from), p.to, p.text);
+      },
+    ],
+    [
+      'reconnect',
+      async (params) => {
+        const label = normalizeLabel((params as { label: string }).label);
+        await sm.connect(label);
+        return { label, status: sm.statusOf(label) };
+      },
+    ],
+    [
+      'disconnect',
+      (params) => sm.disconnect(normalizeLabel((params as { label: string }).label)),
+    ],
+    [
+      'relink',
+      async (params) => {
+        const label = normalizeLabel((params as { label: string }).label);
+        await sm.relink(label);
+        return { label, status: sm.statusOf(label), qr: sm.getQr(label) };
+      },
+    ],
+    [
+      'delete_session',
+      (params) => sm.deleteSession(normalizeLabel((params as { label: string }).label)),
+    ],
     ['health_check', (params) => sm.healthCheck(labelFrom((params as { from?: string })?.from))],
     [
       'list_groups',
@@ -106,22 +138,40 @@ export async function runDaemon(): Promise<void> {
           );
         }
         const m = matches[0];
-        const draft = drafts.create({
-          from: label,
-          toJid: m.jid,
-          toName: m.name,
-          kind: 'text',
-          text: p.text,
-        });
+
+        // Build the per-kind payload + a human-readable preview summary.
+        const base = { from: label, toJid: m.jid, toName: m.name };
+        let payload: NewDraft;
+        let summary: string;
+        let attach: { name: string; sizeBytes: number } | undefined;
+        const trunc = (t: string) => (t.length > 200 ? `${t.slice(0, 200)}…` : t);
+
+        switch (p.kind) {
+          case 'image':
+          case 'document': {
+            const a = resolveAttachment(p.path!);
+            payload = { ...base, kind: p.kind, text: p.text, attachment: a };
+            attach = { name: a.filename, sizeBytes: a.sizeBytes };
+            summary = `${p.kind}: ${a.filename} (${(a.sizeBytes / 1024).toFixed(0)} KB)${p.text ? ` — ${trunc(p.text)}` : ''}`;
+            break;
+          }
+          case 'location':
+            payload = { ...base, kind: 'location', latitude: p.latitude, longitude: p.longitude, locationName: p.name };
+            summary = `location ${p.latitude}, ${p.longitude}${p.name ? ` (${p.name})` : ''}`;
+            break;
+          case 'contact':
+            payload = { ...base, kind: 'contact', contactName: p.contactName, contactPhone: p.contactPhone };
+            summary = `contact ${p.contactName} — ${p.contactPhone}`;
+            break;
+          default:
+            payload = { ...base, kind: 'text', text: p.text };
+            summary = trunc(p.text ?? '');
+        }
+
+        const draft = drafts.create(payload);
         return {
           draftId: draft.id,
-          preview: {
-            from: label,
-            toJid: m.jid,
-            toName: m.name,
-            kind: 'text',
-            summary: p.text.length > 200 ? `${p.text.slice(0, 200)}…` : p.text,
-          },
+          preview: { from: label, toJid: m.jid, toName: m.name, kind: p.kind, summary, attachment: attach },
           expiresInSec: Math.floor((draft.expiresAtMs - Date.now()) / 1000),
         };
       },
@@ -155,10 +205,10 @@ export async function runDaemon(): Promise<void> {
             `run: whatsappman relink ${d.from}`,
           ]);
         }
-        const r = await sm.sendTextToJid(d.from, d.toJid, d.text);
+        const r = await sm.sendDraft(d);
         const sentAt = new Date().toISOString();
         drafts.markSent(draftId, { messageId: r.messageId, to: d.toJid, sentAt });
-        return { messageId: r.messageId, status: 'sent', to: d.toName, sentAt };
+        return { messageId: r.messageId, status: 'sent', to: d.toName, kind: d.kind, sentAt };
       },
     ],
     [

@@ -16,8 +16,9 @@ import {
   initialMeta,
   listSessionLabels,
   hasCreds,
+  deleteSessionDir,
 } from '../config/sessions.js';
-import { readState } from '../config/state.js';
+import { readState, writeState, readSettings } from '../config/state.js';
 import { WhatsAppManError, ErrorCode } from '../errors.js';
 import {
   resolveRecipient as resolveRecipientSvc,
@@ -25,8 +26,23 @@ import {
   type RecipientMatch,
   type GroupInfo,
 } from './contact-service.js';
+import { validateBulk } from './bulk.js';
+import type { Draft } from './draft-store.js';
 import type { SessionStatus, SessionMeta } from '../config/schema.js';
 import type { SessionSummary } from '../status.js';
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function buildVcard(name: string, phone: string): string {
+  const waid = phone.replace(/\D/g, '');
+  return [
+    'BEGIN:VCARD',
+    'VERSION:3.0',
+    `FN:${name}`,
+    `TEL;type=CELL;type=VOICE;waid=${waid}:${phone}`,
+    'END:VCARD',
+  ].join('\n');
+}
 
 const logger = pino({ level: 'silent' });
 
@@ -280,6 +296,134 @@ export class SessionManager {
     const socket = this.connectedSocket(label);
     const result = await socket.sendMessage(jid, { text });
     return { messageId: result?.key?.id ?? 'unknown' };
+  }
+
+  /** Dispatch a confirmed draft of any kind to its resolved JID. The file bytes
+   *  for image/document are read here (at send time), not held in the draft. */
+  async sendDraft(draft: Draft): Promise<{ messageId: string }> {
+    const socket = this.connectedSocket(draft.from);
+    const jid = draft.toJid;
+    let result;
+    switch (draft.kind) {
+      case 'text':
+        result = await socket.sendMessage(jid, { text: draft.text ?? '' });
+        break;
+      case 'image': {
+        const buf = fs.readFileSync(draft.attachment!.absPath);
+        result = await socket.sendMessage(jid, { image: buf, caption: draft.text || undefined });
+        break;
+      }
+      case 'document': {
+        const a = draft.attachment!;
+        const buf = fs.readFileSync(a.absPath);
+        result = await socket.sendMessage(jid, {
+          document: buf,
+          fileName: a.filename,
+          mimetype: a.mimetype,
+          caption: draft.text || undefined,
+        });
+        break;
+      }
+      case 'location':
+        result = await socket.sendMessage(jid, {
+          location: {
+            degreesLatitude: draft.latitude!,
+            degreesLongitude: draft.longitude!,
+            name: draft.locationName || undefined,
+          },
+        });
+        break;
+      case 'contact': {
+        const vcard = buildVcard(draft.contactName!, draft.contactPhone!);
+        result = await socket.sendMessage(jid, {
+          contacts: { displayName: draft.contactName!, contacts: [{ vcard }] },
+        });
+        break;
+      }
+    }
+    return { messageId: result?.key?.id ?? 'unknown' };
+  }
+
+  /** Send one text to many recipients, throttled, capped. One failure doesn't
+   *  abort the batch. */
+  async sendBulk(
+    from: string | undefined,
+    recipients: string[],
+    text: string,
+  ): Promise<{ label: string; sent: number; failed: number; results: Array<{ to: string; status: string; error?: string }> }> {
+    const settings = readSettings();
+    validateBulk(recipients, settings.maxBulkRecipients);
+    const label = this.resolveSendLabel(from);
+    const socket = this.connectedSocket(label);
+
+    const results: Array<{ to: string; status: string; error?: string }> = [];
+    let sent = 0;
+    let failed = 0;
+    for (let i = 0; i < recipients.length; i++) {
+      const to = recipients[i];
+      try {
+        const jid = this.formatJid(to);
+        await socket.sendMessage(jid, { text });
+        results.push({ to, status: 'sent' });
+        sent++;
+      } catch (err) {
+        results.push({ to, status: 'failed', error: String((err as Error)?.message ?? err) });
+        failed++;
+      }
+      if (i < recipients.length - 1) await sleep(settings.defaultDelayMs);
+    }
+    return { label, sent, failed, results };
+  }
+
+  /** Drop the live socket but keep creds on disk (fast reconnect later). */
+  disconnect(label: string): { label: string; status: SessionStatus } {
+    const s = this.sessions.get(label);
+    if (!s) throw new WhatsAppManError(ErrorCode.SESSION_NOT_FOUND, `no session "${label}"`);
+    if (s.reconnectTimer) {
+      clearTimeout(s.reconnectTimer);
+      s.reconnectTimer = null;
+    }
+    try {
+      s.socket?.end(undefined);
+    } catch {
+      /* ignore */
+    }
+    s.socket = null;
+    s.qr = null;
+    s.status = 'disconnected';
+    this.patchMeta(label, { status: 'disconnected' });
+    return { label, status: 'disconnected' };
+  }
+
+  /** Re-pair a number with a fresh QR: wipe the (invalid) creds, keep meta history. */
+  async relink(label: string): Promise<void> {
+    const s = this.sessions.get(label);
+    if (s?.reconnectTimer) clearTimeout(s.reconnectTimer);
+    try {
+      s?.socket?.end(undefined);
+    } catch {
+      /* ignore */
+    }
+    this.sessions.delete(label);
+    fs.rmSync(authDir(label), { recursive: true, force: true });
+    this.patchMeta(label, { status: 'qr_pending', phone: null });
+    await this.connect(label);
+  }
+
+  /** Permanently remove a number: socket + auth creds + meta. */
+  deleteSession(label: string): { label: string; deleted: boolean } {
+    const s = this.sessions.get(label);
+    if (s?.reconnectTimer) clearTimeout(s.reconnectTimer);
+    try {
+      s?.socket?.end(undefined);
+    } catch {
+      /* ignore */
+    }
+    this.sessions.delete(label);
+    deleteSessionDir(label);
+    const state = readState();
+    if (state?.defaultSession === label) writeState({ ...state, defaultSession: null });
+    return { label, deleted: true };
   }
 
   /** Can this session send right now? Never throws. */
