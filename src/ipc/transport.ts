@@ -8,8 +8,14 @@ import { socketPath } from '../config/paths.js';
  * only stale-file cleanup and permission tightening differ by platform.
  */
 
-/** Remove a leftover socket file (POSIX). Caller must have confirmed no live
- *  daemon holds it (see daemon/lock.ts) — we never blind-unlink a live socket. */
+/**
+ * Remove a leftover socket file (POSIX) before binding. Safe because the daemon
+ * only reaches here after acquireLock() has already confirmed no *other* live
+ * daemon holds the single-instance lock (see daemon/lock.ts + main.ts) — so any
+ * socket file present is necessarily stale (from a crashed predecessor). We do
+ * NOT re-check isDaemonAlive() here: acquireLock has just written our own pid,
+ * so that would falsely report "alive" and skip cleaning a real stale socket.
+ */
 export function removeStaleSocket(): void {
   if (process.platform === 'win32') return; // named pipes aren't filesystem entries
   const p = socketPath();

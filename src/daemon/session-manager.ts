@@ -27,6 +27,7 @@ import {
   type GroupInfo,
 } from './contact-service.js';
 import { validateBulk } from './bulk.js';
+import { RateLimiter } from './rate-limit.js';
 import type { SessionStatus, SessionMeta } from '../config/schema.js';
 import type { SessionSummary } from '../status.js';
 
@@ -66,10 +67,22 @@ interface ActiveSession {
   qr: string | null; // raw QR payload (rendered to a terminal QR by the CLI)
   phone: string | null;
   reconnectTimer: NodeJS.Timeout | null;
+  reconnectAttempts: number; // for bounded exponential backoff
   contacts: Map<string, string>; // jid -> display name (for name resolution)
 }
 
-const RECONNECT_DELAY_MS = 3000;
+const RECONNECT_BASE_MS = 3000;
+const RECONNECT_MAX_MS = 60_000;
+
+/** Bounded exponential backoff: base * 2^(attempt-1), capped at maxMs. Pure/testable. */
+export function computeBackoff(
+  attempt: number,
+  baseMs: number = RECONNECT_BASE_MS,
+  maxMs: number = RECONNECT_MAX_MS,
+): number {
+  if (attempt <= 1) return baseMs;
+  return Math.min(maxMs, baseMs * 2 ** (attempt - 1));
+}
 
 /**
  * Owns the Baileys socket for each linked number. Single-owner, filesystem-
@@ -79,6 +92,7 @@ const RECONNECT_DELAY_MS = 3000;
  */
 export class SessionManager {
   private sessions = new Map<string, ActiveSession>();
+  private rateLimiter = new RateLimiter();
 
   private ensure(label: string): ActiveSession {
     let s = this.sessions.get(label);
@@ -89,11 +103,24 @@ export class SessionManager {
         qr: null,
         phone: null,
         reconnectTimer: null,
+        reconnectAttempts: 0,
         contacts: new Map(),
       };
       this.sessions.set(label, s);
     }
     return s;
+  }
+
+  /** Enforce the per-session anti-runaway rate limit. Throws RATE_LIMITED. */
+  private checkRate(label: string): void {
+    const now = Date.now();
+    if (!this.rateLimiter.tryConsume(label, now)) {
+      const retry = this.rateLimiter.retryAfterSec(label, now);
+      throw new WhatsAppManError(
+        ErrorCode.RATE_LIMITED,
+        `rate limit hit for "${label}" — retry in ~${retry}s (anti-ban guard)`,
+      );
+    }
   }
 
   private patchMeta(label: string, patch: Partial<SessionMeta>): void {
@@ -169,6 +196,7 @@ export class SessionManager {
       if (connection === 'open') {
         s.status = 'connected';
         s.qr = null;
+        s.reconnectAttempts = 0; // reset backoff on a successful connect
         s.phone = socket.user?.id?.split(':')[0]?.split('@')[0] ?? null;
         const now = new Date().toISOString();
         this.patchMeta(label, {
@@ -187,18 +215,21 @@ export class SessionManager {
 
         if (loggedOut) {
           // Device removed / creds invalid — stop retrying, require a relink.
+          // (No reconnect timer is armed here, so there is no infinite loop.)
           s.status = 'needs_relink';
           s.socket = null;
           this.patchMeta(label, { status: 'needs_relink' });
         } else {
           s.status = 'disconnected';
           this.patchMeta(label, { status: 'disconnected' });
-          // Auto-reconnect transient drops (network, restart-required, etc.).
+          // Auto-reconnect transient drops with bounded exponential backoff.
           if (!s.reconnectTimer) {
+            s.reconnectAttempts += 1;
+            const delay = computeBackoff(s.reconnectAttempts);
             s.reconnectTimer = setTimeout(() => {
               s.reconnectTimer = null;
               if (this.sessions.has(label)) this.connect(label).catch(() => {});
-            }, RECONNECT_DELAY_MS);
+            }, delay);
           }
         }
       }
@@ -279,6 +310,7 @@ export class SessionManager {
   ): Promise<{ label: string; toJid: string; messageId: string; status: string }> {
     const label = this.resolveSendLabel(from);
     const socket = this.connectedSocket(label);
+    this.checkRate(label);
     const jid = this.formatJid(to);
     const result = await socket.sendMessage(jid, { text });
     return { label, toJid: jid, messageId: result?.key?.id ?? 'unknown', status: 'sent' };
@@ -317,6 +349,7 @@ export class SessionManager {
    *  confirm_send (a Draft) and the scheduler (a scheduled entry). */
   async sendDraft(draft: SendableMessage): Promise<{ messageId: string }> {
     const socket = this.connectedSocket(draft.from);
+    this.checkRate(draft.from);
     const jid = draft.toJid;
     let result;
     switch (draft.kind) {
@@ -377,6 +410,7 @@ export class SessionManager {
     for (let i = 0; i < recipients.length; i++) {
       const to = recipients[i];
       try {
+        this.checkRate(label); // anti-runaway; a delayed bulk refills and never trips it
         const jid = this.formatJid(to);
         await socket.sendMessage(jid, { text });
         results.push({ to, status: 'sent' });

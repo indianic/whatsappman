@@ -123,10 +123,15 @@ attacker-controlled number. Controls:
 
 Baileys is unofficial; automated bulk sending risks the number being banned, and
 a rogue local caller could weaponize your number for spam (reputational/legal
-exposure). Controls: capability token, `settings.defaultDelayMs` /
-`settings.maxBulkRecipients` throttles enforced **in the daemon** (not just the
-client), a per-session send rate limit, and `BULK_LIMIT_EXCEEDED` /
-`RATE_LIMITED` errors. The README carries a prominent caution.
+exposure). Controls, all enforced **in the daemon** (not just the client):
+- the capability token gates who can send at all;
+- a **per-session token-bucket rate limiter** (`src/daemon/rate-limit.ts`, 30
+  burst / ~1 per second) on every send path (`sendText`/`sendDraft`/`sendBulk`)
+  → `RATE_LIMITED`, so a runaway loop or rogue caller can't blast the number
+  into a ban. Sized so normal interactive/bulk use never trips it;
+- `settings.defaultDelayMs` between bulk messages + `settings.maxBulkRecipients`
+  cap → `BULK_LIMIT_EXCEEDED`.
+The README carries a prominent caution.
 
 ## Process & DevOps hardening
 

@@ -111,22 +111,32 @@ items lifted/adapted from the `@mcphub/plugin-baileys-whatsapp` plugin's
 
 ## Phase 8 — Security hardening & cross-OS (see [SECURITY.md](SECURITY.md))
 
-Access control (peer-UID + token + validation) lands in Phase 1; this phase is
-the deeper hardening.
+Access control (token + zod validation + method allowlist + 0600 socket) landed
+in Phase 1; the attachment path guard landed in Phase 4. This phase is the
+remaining hardening. Split into **done here** vs. **honestly deferred** (needs
+real hardware or a native dependency that would break the pure-Node/Alpine
+promise — see the rationale on each).
 
-- [ ] **Encrypt `auth/` creds** with a keytar-backed AES-256-GCM master key (mailman-style, machine-bound) so a copied `sessions/` folder is useless off-box — **High**
-- [ ] **Attachment path guard**: sensitive-path denylist (`~/.ssh`, `*.env`, `~/.aws`, keychains, the config dir) → `ATTACHMENT_FORBIDDEN`; audit every attachment path + recipient; size cap enforced pre-read — **High**
-- [ ] **Windows named-pipe ACL**: owner-SID-only DACL + `PIPE_REJECT_REMOTE_CLIENTS` — **High (Win)**
-- [ ] **Supply chain**: commit lockfile, `npm ci`, pin Baileys/qrcode/pino, `npm audit` + Dependabot in CI — **High**
-- [ ] **Daemon privilege**: confirm never root; systemd `--user` unit with `NoNewPrivileges`/`ProtectSystem=strict`/`ReadWritePaths=%h/.whatsappman`/`PrivateTmp`; launchd user-agent domain
-- [ ] Rate limiting + `defaultDelayMs`/`maxBulkRecipients` enforced **in the daemon**, not just clients; `RATE_LIMITED`
-- [ ] `pino` redaction verified (no creds/bodies in logs); QR never written to `daemon.*.log`; `sent.jsonl` `0600` + rotation
-- [ ] Doc: exclude `~/.whatsappman` from iCloud/Time Machine/Dropbox/OneDrive sync
-- [ ] Reconnect backoff tuned; confirm no infinite reconnect loop on `loggedOut`
-- [ ] Confirm socket + `daemon.token` + `auth/` perms are `0600`/`0700` on a fresh install; stale-socket unlink only after pid liveness check
-- [ ] Optional opt-in OS sandbox (macOS codesign/notarize + App Sandbox; Linux seccomp/AppArmor) — documented, not default
-- [ ] Cross-OS smoke test per [CROSS-OS.md](CROSS-OS.md): macOS launchd, Windows named pipe + Task Scheduler, Ubuntu/Xubuntu systemd-user, **Alpine OpenRC/nohup + send without keytar (musl, no keyring)**, headless SSH QR pairing — needs those machines
-- [ ] Ban-safety review: default throttles, prominent caution in README
+**Done + verified this phase:**
+
+- [x] **Anti-abuse rate limiter** (`src/daemon/rate-limit.ts`): per-session token bucket (30 burst, 1/sec refill), enforced **in the daemon** on every send path (`sendText`/`sendDraft`/`sendBulk`) → `RATE_LIMITED`. Stops a rogue same-user caller or runaway loop from blasting the number into a ban. Sized so normal interactive/bulk use never trips it. (4 unit tests.)
+- [x] **Reconnect backoff**: bounded exponential (`computeBackoff`, 3s → cap 60s, doubling), resets on a successful connect; **no infinite loop on `loggedOut`** (terminal → `needs_relink`, no timer armed). (Unit-tested incl. no-overflow at high attempts.)
+- [x] **Perms verified on a real fresh daemon start** (test/perms.test.ts): config dir `0700`, socket/`daemon.token`/`daemon.pid` `0600`, `sessions/` `0700`.
+- [x] **Stale-socket safety documented + correct**: unlink is gated by `acquireLock()` (no *other* live daemon) — and we deliberately do NOT re-check `isDaemonAlive()` at unlink time (acquireLock just wrote our own pid, which would falsely read "alive" and skip cleaning a real stale socket). Comment in `ipc/transport.ts` records why.
+- [x] **Daemon privilege** (from Phase 5): never root; systemd `--user` unit with `NoNewPrivileges`/`PrivateTmp`; launchd user-agent domain.
+- [x] **`pino` redaction** (`src/logging.ts`, Phase 7): bodies/creds/token redacted; `sent.jsonl` `0600` + 5 MB rotation; QR rendered only to the interactive terminal, never the daemon log.
+- [x] **Attachment path guard** (Phase 4): `~/.ssh`/`*.env`/`~/.aws`/keychains/config-dir → `ATTACHMENT_FORBIDDEN`; size cap pre-read. (6 unit tests.)
+- [x] **Supply chain baseline**: `package-lock.json` committed; CI uses `npm ci`; Baileys/qrcode/pino pinned. (Dependabot/`npm audit` in CI = a repo-settings follow-up.)
+- [x] **Ban-safety**: prominent caution in README + daemon-side throttles (`defaultDelayMs`, `maxBulkRecipients`, rate limiter).
+
+**Honestly deferred — needs hardware or a native dep (not built to avoid faking it):**
+
+- [ ] **Encrypt `auth/` creds** with a keytar-backed AES-256-GCM key — **High, but deliberately not added yet.** `keytar` is a native module that undermines the pure-Node/Alpine-musl promise, and wrapping Baileys' `useMultiFileAuthState` I/O risks corrupting a working, verified session. Interim mitigation is real: creds are `0700`, and the docs tell users to exclude `~/.whatsappman` from cloud sync. Revisit as an **opt-in** with a clean fallback.
+- [ ] **Explicit `getpeereid()` / `SO_PEERCRED` peer-UID check** — Node exposes no built-in for this; a correct implementation needs a native addon. The `0600` socket in a `0700` dir already enforces the same-UID boundary (the token is the second gate), so this is defense-in-depth, not the boundary itself. Documented in `ipc/access.ts`.
+- [ ] **Windows named-pipe ACL** (owner-SID DACL + `PIPE_REJECT_REMOTE_CLIENTS`) + the schtasks task-writer — needs a Windows box to build and verify; can't be faked from macOS.
+- [ ] **Cross-OS smoke test** per [CROSS-OS.md](CROSS-OS.md): Windows, Ubuntu/Xubuntu systemd-user, Alpine OpenRC/nohup + send without keytar, headless SSH QR — needs those machines.
+- [ ] **Opt-in OS sandbox** (macOS codesign/notarize + App Sandbox; Linux seccomp/AppArmor) — the only thing that truly isolates the daemon from *same-user* code; documented as advanced opt-in, not default.
+- [ ] Doc note to exclude `~/.whatsappman` from iCloud/Time Machine/Dropbox/OneDrive — in SECURITY.md; surface in README too on the final docs pass.
 
 ## Pending, deliberately not automatic
 
