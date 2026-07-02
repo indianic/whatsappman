@@ -249,6 +249,12 @@ function suggest(cmd: string): string | null {
   return hit ?? null;
 }
 
+/** Turn literal `\n` / `\t` (which a shell can't easily embed) into real chars,
+ *  so `whatsappman send x "line1\nline2"` produces a two-line WhatsApp message. */
+function unescape(s: string): string {
+  return s.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+}
+
 /** CLI entrypoint. Returns the process exit code. */
 export async function cliMain(args: string[]): Promise<number> {
   const cmd = args[0];
@@ -349,6 +355,8 @@ export async function cliMain(args: string[]): Promise<number> {
       const lng = takeFlag(args, '--lng');
       const contactName = takeFlag(args, '--contact-name');
       const contactPhone = takeFlag(args, '--contact-phone');
+      const raw = hasFlag(args, '--raw'); // send verbatim (skip Markdown→WhatsApp)
+      hasFlag(args, '--yes'); // accept + consume so it never leaks into the message
       const to = args[1];
 
       if (kind && kind !== 'text') {
@@ -363,29 +371,32 @@ export async function cliMain(args: string[]): Promise<number> {
           to,
           kind: kind as 'image' | 'document' | 'location' | 'contact',
           path,
-          caption: caption ?? (args.slice(2).join(' ') || undefined),
+          caption: caption != null ? unescape(caption) : (args.slice(2).join(' ') ? unescape(args.slice(2).join(' ')) : undefined),
           latitude: lat != null ? Number(lat) : undefined,
           longitude: lng != null ? Number(lng) : undefined,
           name,
           contactName,
           contactPhone,
+          raw,
         });
       }
 
-      const text = args.slice(2).join(' ');
+      const text = unescape(args.slice(2).join(' '));
       if (!to || !text) {
         intro('whatsappman — send');
-        fail('usage: whatsappman send <to> <text> [--from <label>]');
+        fail('usage: whatsappman send <to> <text> [--from <label>] [--raw]');
         outro('send');
         return 1;
       }
-      return runSend(to, text, from);
+      return runSend(to, text, from, raw);
     }
 
     case 'send-bulk': {
       const from = takeFlag(args, '--from');
       const toCsv = takeFlag(args, '--to');
-      const text = args.slice(1).join(' ');
+      const raw = hasFlag(args, '--raw');
+      hasFlag(args, '--yes');
+      const text = unescape(args.slice(1).join(' '));
       if (!toCsv || !text) {
         intro('whatsappman — send-bulk');
         fail('usage: whatsappman send-bulk <text> --to <comma,separated,recipients> [--from <label>]');
@@ -393,7 +404,7 @@ export async function cliMain(args: string[]): Promise<number> {
         return 1;
       }
       const recipients = toCsv.split(',').map((r) => r.trim()).filter(Boolean);
-      return runSendBulk(recipients, text, from);
+      return runSendBulk(recipients, text, from, raw);
     }
 
     case 'start': {

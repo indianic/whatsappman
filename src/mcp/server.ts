@@ -66,7 +66,7 @@ const TOOLS: Record<string, ToolDef> = {
   },
   draft_message: {
     description:
-      'Build a preview of a message and store it as a draft. Does NOT send. Supports kind=text|image|document|location|contact. For image/document, pass an absolute file `path` (sensitive paths like ~/.ssh or .env are refused) with optional `text` caption. Returns { draftId, preview, expiresInSec }. Show the preview to the user and get explicit confirmation, then call confirm_send.',
+      'Build a preview of a message and store it as a draft. Does NOT send. Supports kind=text|image|document|location|contact. Message text may be written in Markdown — **bold**, _italic_, ~~strike~~, `code`, # headings, [links](url), lists, and newlines are auto-converted to WhatsApp formatting (pass raw:true to send verbatim). For image/document, pass an absolute file `path` (sensitive paths like ~/.ssh or .env are refused) with optional `text` caption. Returns { draftId, preview, expiresInSec }. Show the preview to the user and get explicit confirmation, then call confirm_send.',
     inputSchema: obj(
       {
         from: str('session label; omit for the default number'),

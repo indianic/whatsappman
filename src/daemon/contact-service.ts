@@ -30,8 +30,28 @@ function looksLikePhone(q: string): boolean {
   return digits.length >= 7 && /^[+\d\s()-]+$/.test(q.trim());
 }
 
-function phoneToJid(q: string): string {
-  return `${q.replace(/\D/g, '')}@s.whatsapp.net`;
+/**
+ * Normalize a phone number to full international digits (no `+`), applying the
+ * default country code when the caller gave a bare national number:
+ *   - starts with `+`            → explicit country code, use the digits as-is
+ *   - ≤10 digits (national)      → prepend `defaultCc` (e.g. India 91)
+ *   - 11 digits with a leading 0 → strip the trunk 0, then prepend `defaultCc`
+ *   - otherwise (already long enough) → assume it already carries a country code
+ * Examples with cc=91: "9925623349"→"919925623349", "09925623349"→"919925623349",
+ * "+14155551234"→"14155551234", "919925623349"→"919925623349".
+ */
+export function normalizePhone(raw: string, defaultCc: string): string {
+  const trimmed = raw.trim();
+  const hasPlus = trimmed.startsWith('+');
+  let digits = trimmed.replace(/\D/g, '');
+  if (hasPlus) return digits;
+  if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+  if (digits.length <= 10) return defaultCc + digits;
+  return digits;
+}
+
+function phoneToJid(q: string, defaultCc: string): string {
+  return `${normalizePhone(q, defaultCc)}@s.whatsapp.net`;
 }
 
 /** List the groups the session participates in. */
@@ -53,6 +73,7 @@ export async function resolveRecipient(
   socket: WASocket,
   contacts: Map<string, string>, // jid -> display name
   query: string,
+  defaultCc: string,
 ): Promise<RecipientMatch[]> {
   const q = query.trim();
 
@@ -61,9 +82,9 @@ export async function resolveRecipient(
     return [{ jid: q, name: q.split('@')[0], kind: q.includes('@g.us') ? 'group' : 'individual' }];
   }
 
-  // 2) Phone number → JID, validated against WhatsApp.
+  // 2) Phone number → JID (default country code applied), validated against WhatsApp.
   if (looksLikePhone(q)) {
-    const jid = phoneToJid(q);
+    const jid = phoneToJid(q, defaultCc);
     let onWa: Awaited<ReturnType<typeof socket.onWhatsApp>>;
     try {
       onWa = await socket.onWhatsApp(jid);

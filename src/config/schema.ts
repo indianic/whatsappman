@@ -39,6 +39,11 @@ export const settingsSchema = z.object({
   alwaysConfirm: z.boolean().default(true),
   /** Fire OS desktop notifications for actionable daemon events (default on). */
   notifications: z.boolean().default(true),
+  /** Country code prepended to a recipient number that has none (default India). */
+  defaultCountryCode: z
+    .string()
+    .regex(/^\d{1,4}$/)
+    .default('91'),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 
@@ -49,6 +54,7 @@ export const DEFAULT_SETTINGS: Settings = {
   maxBulkRecipients: 100,
   alwaysConfirm: true,
   notifications: true,
+  defaultCountryCode: '91',
 };
 
 export const DRAFT_KIND = ['text', 'image', 'document', 'location', 'contact'] as const;

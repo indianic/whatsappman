@@ -70,6 +70,7 @@ const sendTextParams = z.object({
   from: z.string().min(1).optional(),
   to: z.string().min(1),
   text: z.string().min(1).max(65536),
+  raw: z.boolean().optional(), // skip Markdown→WhatsApp markup conversion
 });
 export type SendTextParams = z.infer<typeof sendTextParams>;
 
@@ -87,6 +88,7 @@ const draftMessageParams = z
     name: z.string().optional(), // location name
     contactName: z.string().optional(), // contact
     contactPhone: z.string().optional(), // contact
+    raw: z.boolean().optional(), // skip Markdown→WhatsApp markup conversion
   })
   .superRefine((v, ctx) => {
     const need = (cond: boolean, msg: string) => {
@@ -103,6 +105,7 @@ const sendBulkParams = z.object({
   from: z.string().min(1).optional(),
   to: z.array(z.string().min(1)).min(1),
   text: z.string().min(1).max(65536),
+  raw: z.boolean().optional(),
 });
 export type SendBulkParams = z.infer<typeof sendBulkParams>;
 
@@ -132,6 +135,7 @@ const updateSettingsParams = z.object({
   maxBulkRecipients: z.number().int().positive().optional(),
   alwaysConfirm: z.boolean().optional(),
   notifications: z.boolean().optional(),
+  defaultCountryCode: z.string().regex(/^\d{1,4}$/).optional(),
 });
 export type UpdateSettingsParams = z.infer<typeof updateSettingsParams>;
 

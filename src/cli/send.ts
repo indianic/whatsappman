@@ -25,10 +25,10 @@ function reportSendError(err: unknown, label: string): number {
  * direct send (the draft/confirm preview flow arrives with the MCP tools in
  * Phase 3). Errors render with their code + the fix-it next steps.
  */
-export async function runSend(to: string, text: string, from?: string): Promise<number> {
+export async function runSend(to: string, text: string, from?: string, raw?: boolean): Promise<number> {
   intro('whatsappman — send');
   try {
-    const res = await request<SendResult>('send_text', { from, to, text });
+    const res = await request<SendResult>('send_text', { from, to, text, raw });
     section('sent');
     fact(`via "${res.label}" → ${res.toJid}`, true);
     row(`message id: ${res.messageId}`);
@@ -50,6 +50,7 @@ export interface MediaSendOpts {
   name?: string;
   contactName?: string;
   contactPhone?: string;
+  raw?: boolean;
 }
 
 /**
@@ -73,6 +74,7 @@ export async function runSendMedia(opts: MediaSendOpts): Promise<number> {
         name: opts.name,
         contactName: opts.contactName,
         contactPhone: opts.contactPhone,
+        raw: opts.raw,
       },
     );
     section('preview');
@@ -97,10 +99,10 @@ interface BulkResult {
 }
 
 /** Send one text to many recipients, throttled + capped (send_bulk). */
-export async function runSendBulk(recipients: string[], text: string, from?: string): Promise<number> {
+export async function runSendBulk(recipients: string[], text: string, from?: string, raw?: boolean): Promise<number> {
   intro('whatsappman — send-bulk');
   try {
-    const res = await request<BulkResult>('send_bulk', { from, to: recipients, text });
+    const res = await request<BulkResult>('send_bulk', { from, to: recipients, text, raw });
     section('bulk result');
     fact(`via "${res.label}": ${res.sent} sent, ${res.failed} failed`, res.failed === 0);
     for (const r of res.results) {

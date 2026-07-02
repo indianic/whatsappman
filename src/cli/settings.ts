@@ -5,7 +5,8 @@ import type { Settings } from '../config/schema.js';
 
 const NUMERIC_KEYS = ['draftTtlMinutes', 'defaultDelayMs', 'maxBulkRecipients'];
 const BOOL_KEYS = ['alwaysConfirm', 'notifications'];
-const SETTABLE = [...NUMERIC_KEYS, ...BOOL_KEYS];
+const STRING_KEYS = ['defaultCountryCode'];
+const SETTABLE = [...NUMERIC_KEYS, ...BOOL_KEYS, ...STRING_KEYS];
 
 function printSettings(s: Settings): void {
   section('settings');
@@ -14,6 +15,7 @@ function printSettings(s: Settings): void {
   row(`maxBulkRecipients  ${s.maxBulkRecipients}`);
   row(`alwaysConfirm      ${s.alwaysConfirm}`);
   row(`notifications      ${s.notifications}`);
+  row(`defaultCountryCode ${s.defaultCountryCode}`);
 }
 
 export async function runSettings(args: string[]): Promise<number> {
@@ -42,9 +44,17 @@ export async function runSettings(args: string[]): Promise<number> {
         outro('settings');
         return 1;
       }
-      let value: number | boolean;
+      let value: number | boolean | string;
       if (BOOL_KEYS.includes(key)) {
         value = /^(true|1|yes|on)$/i.test(rawValue);
+      } else if (STRING_KEYS.includes(key)) {
+        // defaultCountryCode: bare digits only (strip a leading +), 1–4 digits.
+        value = rawValue.replace(/^\+/, '');
+        if (!/^\d{1,4}$/.test(value)) {
+          fail(`"${key}" expects 1-4 digits (a country code like 91), got "${rawValue}"`);
+          outro('settings');
+          return 1;
+        }
       } else {
         value = Number(rawValue);
         if (!Number.isFinite(value)) {

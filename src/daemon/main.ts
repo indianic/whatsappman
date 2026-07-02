@@ -12,6 +12,7 @@ import { SessionManager } from './session-manager.js';
 import { DraftStore, type NewDraft } from './draft-store.js';
 import { Scheduler } from './scheduler.js';
 import { resolveAttachment } from './attachments.js';
+import { toWhatsAppMarkup } from './markup.js';
 import { normalizeLabel, listSessionLabels } from '../config/sessions.js';
 import { WhatsAppManError, ErrorCode } from '../errors.js';
 import { appendSent, readRecent } from '../audit.js';
@@ -60,6 +61,7 @@ export async function runDaemon(): Promise<void> {
   const scheduler = new Scheduler(sm);
 
   const labelFrom = (from?: string) => (from ? normalizeLabel(from) : undefined);
+  const fmt = (text: string, raw?: boolean) => (raw ? text : toWhatsAppMarkup(text));
 
   const handlers = new Map<Method, Handler>([
     ['ping', () => ({ pong: true, pid: process.pid })],
@@ -84,14 +86,14 @@ export async function runDaemon(): Promise<void> {
       'send_text',
       async (params) => {
         const p = params as SendTextParams;
-        return sm.sendText(labelFrom(p.from), p.to, p.text);
+        return sm.sendText(labelFrom(p.from), p.to, fmt(p.text, p.raw));
       },
     ],
     [
       'send_bulk',
       async (params) => {
         const p = params as SendBulkParams;
-        return sm.sendBulk(labelFrom(p.from), p.to, p.text);
+        return sm.sendBulk(labelFrom(p.from), p.to, fmt(p.text, p.raw));
       },
     ],
     [
@@ -151,6 +153,9 @@ export async function runDaemon(): Promise<void> {
         }
         const m = matches[0];
 
+        // Markdown → WhatsApp markup for the body / caption (unless raw).
+        const bodyText = p.text != null ? fmt(p.text, p.raw) : undefined;
+
         // Build the per-kind payload + a human-readable preview summary.
         const base = { from: label, toJid: m.jid, toName: m.name };
         let payload: NewDraft;
@@ -162,9 +167,9 @@ export async function runDaemon(): Promise<void> {
           case 'image':
           case 'document': {
             const a = resolveAttachment(p.path!);
-            payload = { ...base, kind: p.kind, text: p.text, attachment: a };
+            payload = { ...base, kind: p.kind, text: bodyText, attachment: a };
             attach = { name: a.filename, sizeBytes: a.sizeBytes };
-            summary = `${p.kind}: ${a.filename} (${(a.sizeBytes / 1024).toFixed(0)} KB)${p.text ? ` — ${trunc(p.text)}` : ''}`;
+            summary = `${p.kind}: ${a.filename} (${(a.sizeBytes / 1024).toFixed(0)} KB)${bodyText ? ` — ${trunc(bodyText)}` : ''}`;
             break;
           }
           case 'location':
@@ -176,8 +181,8 @@ export async function runDaemon(): Promise<void> {
             summary = `contact ${p.contactName} — ${p.contactPhone}`;
             break;
           default:
-            payload = { ...base, kind: 'text', text: p.text };
-            summary = trunc(p.text ?? '');
+            payload = { ...base, kind: 'text', text: bodyText };
+            summary = trunc(bodyText ?? '');
         }
 
         const draft = drafts.create(payload);

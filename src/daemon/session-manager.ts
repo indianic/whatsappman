@@ -23,6 +23,7 @@ import { WhatsAppManError, ErrorCode } from '../errors.js';
 import {
   resolveRecipient as resolveRecipientSvc,
   listGroups as listGroupsSvc,
+  normalizePhone,
   type RecipientMatch,
   type GroupInfo,
 } from './contact-service.js';
@@ -131,11 +132,12 @@ export class SessionManager {
 
   private formatJid(to: string): string {
     if (to.includes('@')) return to; // already a JID (individual or @g.us group)
-    const digits = to.replace(/\D/g, '');
-    if (digits.length === 0) {
+    if (to.replace(/\D/g, '').length === 0) {
       throw new WhatsAppManError(ErrorCode.INVALID_JID, `cannot resolve recipient "${to}"`);
     }
-    return `${digits}@s.whatsapp.net`;
+    // Apply the default country code (India by default) to a bare number.
+    const cc = readSettings().defaultCountryCode;
+    return `${normalizePhone(to, cc)}@s.whatsapp.net`;
   }
 
   /**
@@ -313,13 +315,24 @@ export class SessionManager {
     from: string | undefined,
     to: string,
     text: string,
-  ): Promise<{ label: string; toJid: string; messageId: string; status: string }> {
+  ): Promise<{ label: string; toJid: string; toName: string; messageId: string; status: string }> {
     const label = this.resolveSendLabel(from);
-    const socket = this.connectedSocket(label);
+    this.connectedSocket(label); // ensure connected before resolving/sending
+    // Resolve + validate the recipient (onWhatsApp), exactly like the draft
+    // path — so a bad/nonexistent number errors instead of a false "sent",
+    // and a bare number gets the default country code applied.
+    const matches = await this.resolveRecipient(label, to);
+    if (matches.length > 1) {
+      throw new WhatsAppManError(
+        ErrorCode.AMBIGUOUS_RECIPIENT,
+        `"${to}" matches ${matches.length} recipients — be more specific or pass a JID`,
+        matches.map((m) => `${m.name} (${m.jid})`),
+      );
+    }
+    const m = matches[0];
     this.checkRate(label);
-    const jid = this.formatJid(to);
-    const result = await socket.sendMessage(jid, { text });
-    return { label, toJid: jid, messageId: result?.key?.id ?? 'unknown', status: 'sent' };
+    const r = await this.sendTextToJid(label, m.jid, text);
+    return { label, toJid: m.jid, toName: m.name, messageId: r.messageId, status: 'sent' };
   }
 
   /** Public wrapper over the default/sole-session resolution logic. */
@@ -331,7 +344,7 @@ export class SessionManager {
   async resolveRecipient(label: string, query: string): Promise<RecipientMatch[]> {
     const socket = this.connectedSocket(label);
     const s = this.sessions.get(label)!;
-    return resolveRecipientSvc(socket, s.contacts, query);
+    return resolveRecipientSvc(socket, s.contacts, query, readSettings().defaultCountryCode);
   }
 
   async listGroups(label: string): Promise<GroupInfo[]> {
