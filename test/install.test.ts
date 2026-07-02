@@ -95,3 +95,25 @@ test('schtasks task name + xml path mirror the instance id', () => {
   assert.ok(install.schtasksXmlPath().endsWith('.xml'));
   assert.ok(install.schtasksXmlPath().includes('whatsappman-'));
 });
+
+test('supervisorStartPlan routes start through each supervisor (keeps crash-supervision)', () => {
+  const launchd = install.supervisorStartPlan('launchd', 'Kalpesh.local');
+  assert.equal(launchd?.length, 1);
+  assert.equal(launchd?.[0].cmd, 'launchctl');
+  assert.equal(launchd?.[0].args[0], 'kickstart');
+  assert.match(launchd?.[0].args[1] ?? '', /^gui\/\d+\/com\.indianic\.whatsappman\.kalpesh-local$/);
+
+  assert.deepEqual(install.supervisorStartPlan('systemd'), [
+    { cmd: 'systemctl', args: ['--user', 'start', 'whatsappman.service'] },
+  ]);
+  assert.deepEqual(install.supervisorStartPlan('openrc'), [
+    { cmd: 'rc-service', args: ['whatsappman', 'start'] },
+  ]);
+  assert.deepEqual(install.supervisorStartPlan('schtasks', 'Kalpesh.local'), [
+    { cmd: 'schtasks', args: ['/Run', '/TN', 'whatsappman-kalpesh-local'] },
+  ]);
+});
+
+test('supervisorStartPlan returns null for nohup (caller falls back to detached spawn)', () => {
+  assert.equal(install.supervisorStartPlan('nohup'), null);
+});

@@ -241,6 +241,41 @@ export function buildSchtasksCreateArgs(
   return ['/Create', '/TN', taskName, '/XML', xmlPath, '/F'];
 }
 
+export interface SupervisorCommand {
+  cmd: string;
+  args: string[];
+}
+
+/**
+ * Command(s) to START the daemon **through its installed supervisor**, or null
+ * for nohup/none (the caller then falls back to a detached spawn).
+ *
+ * Why this matters: `startDaemon()` used to always detached-spawn, so a
+ * `whatsappman restart` / `update` left the daemon running *outside* launchd/
+ * systemd — losing crash auto-restart (KeepAlive / Restart=on-failure) until
+ * the next login. Routing start through the supervisor keeps it supervised.
+ * Pure + exported for unit testing; executed in cli/daemon-control.ts.
+ */
+export function supervisorStartPlan(
+  mechanism: Mechanism = detectMechanism(),
+  host?: string,
+): SupervisorCommand[] | null {
+  switch (mechanism) {
+    case 'launchd': {
+      const uid = typeof process.getuid === 'function' ? process.getuid() : 0;
+      return [{ cmd: 'launchctl', args: ['kickstart', `gui/${uid}/${launchdLabel(host)}`] }];
+    }
+    case 'systemd':
+      return [{ cmd: 'systemctl', args: ['--user', 'start', 'whatsappman.service'] }];
+    case 'openrc':
+      return [{ cmd: 'rc-service', args: ['whatsappman', 'start'] }];
+    case 'schtasks':
+      return [{ cmd: 'schtasks', args: ['/Run', '/TN', schtasksTaskName(host)] }];
+    default:
+      return null; // nohup / none — caller detached-spawns
+  }
+}
+
 // ── Paths for the generated OS files ─────────────────────────────────────
 
 /** Per-instance Task Scheduler task name (mirrors the launchd/systemd instance id). */
