@@ -150,7 +150,8 @@ never blocking a send.
 - [x] Unit tests (6): per-OS command shape + escaping (AppleScript `"`/`\`, PowerShell `'`), `notificationsEnabled` env/settings precedence
 - [x] Docs: README *Desktop notifications* section (default-on, per-OS mechanism table, how to disable, best-effort/no-op, **macOS Script Editor caveat → System Settings → Notifications → Script Editor**); CROSS-OS matrix row; CLI settings note
 - [x] Verified on macOS: `osascript` command well-formed, `notify()` runs without throwing, setting toggles + persists
-- [ ] **Manual sign-off**: confirm a banner actually appears on macOS (with Script Editor allowed), Linux (`notify-send`), Windows (toast) — needs those desktops
+- [x] **macOS sign-off DONE** (2026-07-02): a real scheduled-send fire produced a visible macOS banner ("WhatsApp scheduled message sent → …") via the daemon → osascript path, confirmed by screenshot. Script Editor notifications were allowed.
+- [ ] **Manual sign-off (remaining)**: confirm a banner on Linux (`notify-send`) and Windows (toast) — needs those desktops
 
 ## Pending, deliberately not automatic
 
