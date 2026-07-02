@@ -46,7 +46,7 @@ items lifted/adapted from the `@mcphub/plugin-baileys-whatsapp` plugin's
 - [x] On daemon boot: enumerate `sessions/*/` with creds and reconnect each (`reconnectAll`)
 - [x] Session status values wired into `meta.json` + `list_sessions` + `whatsappman numbers`
 - [x] **Baileys integration verified**: `link` reaches WhatsApp servers, emits a real QR (237-byte payload), renders a scannable terminal QR, session tracked as `qr_pending`, auth dir created. *(The final human-scan step + reconnect-after-restart + real delivery need a phone — documented as the manual sign-off below.)*
-- [ ] **Manual sign-off (needs a real phone)**: scan the QR to connect, restart the daemon and confirm it reconnects from disk without a new QR, then `whatsappman send` a real text and confirm it arrives.
+- [x] **Manual sign-off DONE (2026-07-02)**: `whatsappman restart` → daemon reconnected from disk in ~3s **without a new QR**, then a real text was drafted+sent and delivered (`messageId 3EB006A019CD1F789BE1C2`). Live-verified against the connected default number.
 
 ## Phase 3 — Draft / confirm / send flow + recipient resolution ✅ DONE
 
@@ -59,7 +59,7 @@ items lifted/adapted from the `@mcphub/plugin-baileys-whatsapp` plugin's
 - [x] MCP server exposes all 8 tools; **no raw send tool** — sending is only `draft_message` → `confirm_send` (verified via real MCP JSON-RPC: tool list, `NO_DEFAULT_SESSION`, `DRAFT_NOT_FOUND`, `health_check` all return structured payloads)
 - [x] `default <label>` CLI + `set_default` IPC → `state.json.defaultSession` as the single source of truth (daemon-owned write)
 - [x] Unit tests (15 total): draft TTL/state machine, `confirm_send` idempotency (markSent replay), cancel-only-pending, `get`→undefined after restart (→ `DRAFT_NOT_FOUND`)
-- [ ] **Manual sign-off (needs a connected number)**: draft → confirm a real message from a Claude session; kill the daemon mid-draft and confirm `confirm_send` returns `DRAFT_NOT_FOUND` (never a half-send).
+- [x] **Manual sign-off DONE (2026-07-02)**: drafted + confirmed a real message from a Claude session (delivered). Then created a draft, `kill -9`'d the daemon mid-draft, and after restart `confirm_send` on that draftId returned `DRAFT_NOT_FOUND` — the orphaned message never sent (verified absent from `recent`). No half-send.
 
 ## Phase 4 — Multiple numbers + the rest of the message kinds ✅ DONE
 
@@ -87,7 +87,8 @@ items lifted/adapted from the `@mcphub/plugin-baileys-whatsapp` plugin's
 - [x] `register` — prints `claude mcp add whatsappman -- npx -y @indianic/whatsappman` + a generic MCP JSON snippet; `--write` runs `claude mcp add` when the CLI is present (safe: no blind config-file mutation)
 - [x] Unit tests (30 total): hostname slug, baked PATH, plist (RunAtLoad/KeepAlive/throttle/PATH), systemd unit (Restart=on-failure), launcher script, `planInstall` writes nothing
 - [x] Verified without mutating the system: `daemon install --print` shows the exact plist + launcher; confirmed nothing written to `~/Library/LaunchAgents`; `doctor` runs read-only
-- [ ] **Manual sign-off (mutates the real machine)**: run `whatsappman init` for real, reboot / log out+in and confirm auto-start + reconnect; `stop` stays stopped; `kill -9` the daemon and confirm `KeepAlive` restarts it.
+- [~] **Manual sign-off (2026-07-02)**: launchd autostart is installed + running (`doctor`). `kill -9` on the **launchd-supervised** daemon → `KeepAlive` restarted it in ~3s (10322→10473); `stop`'s clean SIGTERM stays stopped (KeepAlive `SuccessfulExit:false`). Literal reboot auto-start still unverified (needs a reboot).
+  - ⚠️ **FOUND — KeepAlive gap**: `startDaemon()` is a plain detached `spawn`, so `whatsappman restart` / `whatsappman update` (which restarts) leave the daemon running **outside launchd**, and a crash is then NOT auto-recovered until next login/reboot. First `kill -9` in this session didn't recover for exactly this reason. Fix: route `start`/`restart` through the installed supervisor (`launchctl kickstart -k` / `systemctl --user restart` / `schtasks /Run`) when an autostart job exists, else detached spawn.
 
 ## Phase 6 — Scheduling (daemon-held) ✅ DONE
 
@@ -96,7 +97,7 @@ items lifted/adapted from the `@mcphub/plugin-baileys-whatsapp` plugin's
 - [x] `schedule_send` (snapshots the in-memory draft into the schedule, then consumes the draft so it can't also be confirmed), `list_scheduled`, `cancel_scheduled` — IPC + MCP tools + `whatsappman scheduled [cancel <id>]`
 - [x] Fire path reuses the pre-send health check + `sendDraft`; marks `sent`/`failed`; appends to `sent.jsonl` (`src/audit.ts`); `confirm_send` also logs to `sent.jsonl` now
 - [x] Verified end-to-end (no phone needed): seeded a past-due + a future entry, started the daemon → past-due fired → health check (no session) → `failed` + logged to `sent.jsonl` with reason; future stayed `pending`; `status` shows the count; **after a restart the pending entry survived** (re-armed from disk)
-- [ ] **Manual sign-off (needs a connected number)**: schedule a real send a few minutes out, restart the daemon before it fires, confirm it actually delivers.
+- [x] **Manual sign-off DONE (2026-07-02)**: scheduled a real send ~2.5 min out, restarted the daemon before it fired, confirmed the entry **survived** (still `pending`, re-armed from disk via `list_scheduled`), then it fired at the target time and delivered (`recent` shows it `✓ … (schedule)`).
 
 ## Phase 7 — History, settings, polish ✅ MOSTLY DONE
 
