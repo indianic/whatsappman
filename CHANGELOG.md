@@ -2,6 +2,10 @@
 
 All notable changes to `@indianic/whatsappman` are documented here.
 
+## [Unreleased]
+
+- feat(daemon/windows): implement the Windows Task Scheduler autostart writer (was stubbed). `daemon install` on Windows now registers an at-logon task with restart-on-failure (parity with launchd `KeepAlive` / systemd `Restart=on-failure`) via a UTF-16LE task XML; `install`/`uninstall`/`isInstalled` wired through `schtasks /Create /XML|/Delete|/Query`. Unit-tested; generated XML validated well-formed. Real execution on a Windows box remains the only pending sign-off.
+
 ## [0.2.1] - 2026-07-02
 
 - feat(register): `register --write [--tools …] [--project]` now wires up every supported AI tool, not just Claude Code — Cursor, Gemini CLI, Windsurf (JSON `mcpServers` merge) and Codex (`[mcp_servers.whatsappman]` TOML). Idempotent, preserves unrelated servers; Claude Code still goes through the official `claude mcp add`.

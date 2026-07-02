@@ -170,7 +170,88 @@ depend() {
 `;
 }
 
+const SCHTASKS_DESC = 'whatsappman WhatsApp daemon';
+
+/** XML-escape a value going into a Task Scheduler element (paths carry `&`, spaces, `"`). */
+function xmlEscape(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Windows Task Scheduler XML: run the daemon launcher at logon and restart it on
+ * failure — the Windows parity for launchd `KeepAlive` / systemd
+ * `Restart=on-failure`. The plain `schtasks /Create /SC ONLOGON` command form
+ * can't express restart-on-failure, so we register an XML task instead.
+ *
+ * The action runs the current node with the generated launcher script (the same
+ * launcher the posix mechanisms use), so no shebang/PATH assumptions on Windows.
+ * Pure + exported for unit testing; the file is materialized in `install()`.
+ */
+export function buildSchtasksXml(opts?: { nodePath?: string; launcher?: string }): string {
+  const command = xmlEscape(opts?.nodePath ?? process.execPath);
+  const args = xmlEscape(`"${opts?.launcher ?? launcherPath()}"`);
+  return `<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>${SCHTASKS_DESC}</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <RestartOnFailure>
+      <Interval>PT1M</Interval>
+      <Count>3</Count>
+    </RestartOnFailure>
+    <Enabled>true</Enabled>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>${command}</Command>
+      <Arguments>${args}</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+`;
+}
+
+/** schtasks CLI args to register the XML task (replaces any existing one via /F). */
+export function buildSchtasksCreateArgs(
+  xmlPath: string = schtasksXmlPath(),
+  taskName: string = schtasksTaskName(),
+): string[] {
+  return ['/Create', '/TN', taskName, '/XML', xmlPath, '/F'];
+}
+
 // ── Paths for the generated OS files ─────────────────────────────────────
+
+/** Per-instance Task Scheduler task name (mirrors the launchd/systemd instance id). */
+export function schtasksTaskName(host?: string): string {
+  return instanceId(host); // whatsappman-<slug>
+}
+
+/** Where the task-definition XML is staged before `schtasks /Create /XML`. */
+export function schtasksXmlPath(host?: string): string {
+  return path.join(baseDir(), `${instanceId(host)}.xml`);
+}
 
 export function launchdPlistPath(host?: string): string {
   return path.join(os.homedir(), 'Library', 'LaunchAgents', `${launchdLabel(host)}.plist`);
@@ -209,8 +290,10 @@ export function planInstall(): InstallPlan {
       return { ...base, jobFile: systemdUnitPath(), jobContent: buildSystemdUnit() };
     case 'openrc':
       return { ...base, jobFile: openRcScriptPath(), jobContent: buildOpenRcScript() };
+    case 'schtasks':
+      return { ...base, jobFile: schtasksXmlPath(), jobContent: buildSchtasksXml() };
     default:
-      return base; // nohup / schtasks — no persistent job file in this phase
+      return base; // nohup — no persistent job file
   }
 }
 
@@ -264,10 +347,19 @@ export function install(): { mechanism: Mechanism; note: string } {
       execFileSync('rc-service', ['whatsappman', 'start']);
       return { mechanism, note: 'added OpenRC service whatsappman' };
     }
+    case 'schtasks': {
+      // Task Scheduler's /Create /XML wants a UTF-16LE file (with BOM); it
+      // rejects UTF-8. Stage the XML, then register it at logon with restart.
+      const xmlPath = schtasksXmlPath();
+      const BOM = String.fromCharCode(0xfeff); // UTF-16LE byte-order mark schtasks requires
+      fs.writeFileSync(xmlPath, Buffer.from(BOM + buildSchtasksXml(), 'utf16le'));
+      execFileSync('schtasks', buildSchtasksCreateArgs(xmlPath));
+      return { mechanism, note: `registered Task Scheduler task ${schtasksTaskName()} (at logon, restart on failure)` };
+    }
     default:
       return {
         mechanism,
-        note: 'no persistent autostart configured (nohup/schtasks) — the daemon must be started manually with `whatsappman start`',
+        note: 'no persistent autostart configured (nohup) — start the daemon manually with `whatsappman start`',
       };
   }
 }
@@ -305,6 +397,14 @@ export function uninstall(): { mechanism: Mechanism } {
         }
         fs.rmSync(openRcScriptPath(), { force: true });
         break;
+      case 'schtasks':
+        try {
+          execFileSync('schtasks', ['/Delete', '/TN', schtasksTaskName(), '/F'], { stdio: 'ignore' });
+        } catch {
+          /* ignore */
+        }
+        fs.rmSync(schtasksXmlPath(), { force: true });
+        break;
     }
   } catch {
     /* best-effort cleanup */
@@ -322,6 +422,14 @@ export function isInstalled(): boolean {
       return fs.existsSync(systemdUnitPath());
     case 'openrc':
       return fs.existsSync(openRcScriptPath());
+    case 'schtasks':
+      // The task lives in Task Scheduler, not on disk — query it directly.
+      try {
+        execFileSync('schtasks', ['/Query', '/TN', schtasksTaskName()], { stdio: 'ignore' });
+        return true;
+      } catch {
+        return false;
+      }
     default:
       return false;
   }

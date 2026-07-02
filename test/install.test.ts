@@ -62,3 +62,36 @@ test('planInstall reports a mechanism + launcher without writing anything', () =
   // Dry run must not create the launcher on disk.
   assert.equal(fs.existsSync(plan.launcherPath), false);
 });
+
+test('schtasks XML runs at logon, restarts on failure, and runs node with the launcher', () => {
+  const xml = install.buildSchtasksXml({
+    nodePath: 'C:\\Program Files\\nodejs\\node.exe',
+    launcher: 'C:\\Users\\u\\.whatsappman\\bin\\whatsappmand-test',
+  });
+  assert.match(xml, /encoding="UTF-16"/); // schtasks /XML requires UTF-16
+  assert.match(xml, /<LogonTrigger>/); // start at logon (RunAtLoad parity)
+  assert.match(xml, /<RestartOnFailure>[\s\S]*<Count>3<\/Count>/); // KeepAlive parity
+  assert.match(xml, /<ExecutionTimeLimit>PT0S<\/ExecutionTimeLimit>/); // never time out — it's a daemon
+  assert.match(xml, /<RunLevel>LeastPrivilege<\/RunLevel>/); // never elevated
+  assert.match(xml, /<Command>C:\\Program Files\\nodejs\\node\.exe<\/Command>/);
+  // Launcher path is quoted (spaces) and the quotes are XML-escaped.
+  assert.match(xml, /<Arguments>&quot;C:\\Users\\u\\\.whatsappman\\bin\\whatsappmand-test&quot;<\/Arguments>/);
+});
+
+test('schtasks XML escapes XML-significant characters in paths', () => {
+  const xml = install.buildSchtasksXml({ nodePath: 'C:\\a & b\\node.exe', launcher: 'C:\\<x>' });
+  assert.match(xml, /<Command>C:\\a &amp; b\\node\.exe<\/Command>/);
+  assert.match(xml, /&lt;x&gt;/);
+  assert.doesNotMatch(xml, /<Command>C:\\a & b/); // raw & must not survive
+});
+
+test('buildSchtasksCreateArgs registers the XML under the per-instance task name with /F', () => {
+  const args = install.buildSchtasksCreateArgs('C:\\tmp\\task.xml', 'whatsappman-host');
+  assert.deepEqual(args, ['/Create', '/TN', 'whatsappman-host', '/XML', 'C:\\tmp\\task.xml', '/F']);
+});
+
+test('schtasks task name + xml path mirror the instance id', () => {
+  assert.equal(install.schtasksTaskName('Kalpesh.local'), 'whatsappman-kalpesh-local');
+  assert.ok(install.schtasksXmlPath().endsWith('.xml'));
+  assert.ok(install.schtasksXmlPath().includes('whatsappman-'));
+});
