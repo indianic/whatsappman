@@ -154,6 +154,6 @@ never blocking a send.
 
 ## Pending, deliberately not automatic
 
-- [ ] **`npm publish` to `npm.indianic.in`** — a real, hard-to-reverse action; done **only after explicit confirmation**, matching mailman's stance.
+- [x] **`npm publish` to `npm.indianic.in`** — DONE (2026-07-02): `@indianic/whatsappman@0.1.0` published (author kalpesh, MIT), `latest` tag, resolves from the registry. Install: `npx @indianic/whatsappman init`.
 - [ ] **Registering the real OS daemon job on this machine** — mutates system state (a login item that persists across reboots); `whatsappman init` / `daemon install` does it when the user actually runs it, not as part of any build/test.
 - [ ] **A real long-lived link test** — leaving a number paired for >2 weeks to observe WhatsApp's linked-device expiry and confirm the `NEEDS_RELINK` path triggers cleanly.
