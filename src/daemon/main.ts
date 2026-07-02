@@ -98,7 +98,7 @@ export async function runDaemon(): Promise<void> {
       'reconnect',
       async (params) => {
         const label = normalizeLabel((params as { label: string }).label);
-        await sm.connect(label);
+        await sm.reconnect(label); // errors SESSION_NOT_FOUND for an unknown label
         return { label, status: sm.statusOf(label) };
       },
     ],

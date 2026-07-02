@@ -430,10 +430,36 @@ export class SessionManager {
     return { label, sent, failed, results };
   }
 
+  /** Is this a session that actually exists (live in memory OR persisted on disk)?
+   *  Guards reconnect/disconnect/delete so they act on real sessions instead of
+   *  silently conjuring a new one for an unknown label. */
+  isKnownSession(label: string): boolean {
+    return this.sessions.has(label) || listSessionLabels().includes(label);
+  }
+
+  private requireKnown(label: string): void {
+    if (!this.isKnownSession(label)) {
+      throw new WhatsAppManError(ErrorCode.SESSION_NOT_FOUND, `no session "${label}"`, [
+        `run: whatsappman link --label ${label}`,
+      ]);
+    }
+  }
+
+  /** Reconnect an EXISTING dropped session (never creates a new one). */
+  async reconnect(label: string): Promise<void> {
+    this.requireKnown(label);
+    await this.connect(label);
+  }
+
   /** Drop the live socket but keep creds on disk (fast reconnect later). */
   disconnect(label: string): { label: string; status: SessionStatus } {
+    this.requireKnown(label);
     const s = this.sessions.get(label);
-    if (!s) throw new WhatsAppManError(ErrorCode.SESSION_NOT_FOUND, `no session "${label}"`);
+    if (!s) {
+      // Known on disk but not live in memory — already disconnected.
+      this.patchMeta(label, { status: 'disconnected' });
+      return { label, status: 'disconnected' };
+    }
     if (s.reconnectTimer) {
       clearTimeout(s.reconnectTimer);
       s.reconnectTimer = null;
@@ -450,8 +476,10 @@ export class SessionManager {
     return { label, status: 'disconnected' };
   }
 
-  /** Re-pair a number with a fresh QR: wipe the (invalid) creds, keep meta history. */
+  /** Re-pair a number with a fresh QR: wipe the (invalid) creds, keep meta history.
+   *  Requires an existing session — use `link` (not `relink`) for a new number. */
   async relink(label: string): Promise<void> {
+    this.requireKnown(label);
     const s = this.sessions.get(label);
     if (s?.reconnectTimer) clearTimeout(s.reconnectTimer);
     try {
@@ -467,6 +495,7 @@ export class SessionManager {
 
   /** Permanently remove a number: socket + auth creds + meta. */
   deleteSession(label: string): { label: string; deleted: boolean } {
+    this.requireKnown(label);
     const s = this.sessions.get(label);
     if (s?.reconnectTimer) clearTimeout(s.reconnectTimer);
     try {
