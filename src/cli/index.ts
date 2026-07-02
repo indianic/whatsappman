@@ -1,9 +1,13 @@
-import { intro, outro, section, row, fail, attention } from './tree.js';
+import { intro, outro, section, row, fact, fail, attention } from './tree.js';
 import { renderStatus, renderNumbers } from './render-status.js';
 import { startDaemon, stopDaemon, restartDaemon } from './daemon-control.js';
 import { runLink, runRelink } from './link.js';
 import { runSend, runSendMedia, runSendBulk } from './send.js';
 import { runReconnect, runDisconnect, runDelete, runStatusOne } from './sessions.js';
+import { runInit } from './init.js';
+import { runDoctor } from './doctor.js';
+import { runRegister } from './register.js';
+import { install as osInstall, uninstall as osUninstall, planInstall } from '../daemon/install.js';
 import { request } from '../ipc/client.js';
 import { offlineStatus, diskSessionSummaries, type StatusReport } from '../status.js';
 import type { SessionSummary } from '../status.js';
@@ -11,6 +15,10 @@ import { WhatsAppManError, ErrorCode } from '../errors.js';
 import { getVersion } from '../version.js';
 
 const COMMANDS = [
+  'init',
+  'doctor',
+  'register',
+  'daemon',
   'status',
   'start',
   'stop',
@@ -45,6 +53,57 @@ function takeFlag(args: string[], flag: string): string | undefined {
   return val;
 }
 
+async function runDaemonSub(args: string[]): Promise<number> {
+  const sub = args[1];
+  switch (sub) {
+    case 'install': {
+      if (hasFlag(args, '--print')) {
+        const plan = planInstall();
+        intro('whatsappman — daemon install (dry run)');
+        section('plan');
+        row(`mechanism : ${plan.mechanism}`);
+        row(`instance  : ${plan.instanceId}`);
+        row(`launcher  : ${plan.launcherPath}`);
+        if (plan.jobFile) row(`job file  : ${plan.jobFile}`);
+        outro('would write the above — run without --print to apply');
+        if (plan.jobContent) {
+          process.stdout.write(`\n--- ${plan.jobFile} ---\n${plan.jobContent}\n`);
+        }
+        process.stdout.write(`--- ${plan.launcherPath} ---\n${plan.launcherContent}\n`);
+        return 0;
+      }
+      intro('whatsappman — daemon install');
+      try {
+        const r = osInstall();
+        section('installed');
+        fact(`${r.mechanism}: ${r.note}`, true);
+        outro('daemon install');
+        return 0;
+      } catch (err) {
+        fail(String((err as Error)?.message ?? err));
+        outro('daemon install');
+        return 1;
+      }
+    }
+    case 'uninstall': {
+      intro('whatsappman — daemon uninstall');
+      const r = osUninstall();
+      section('uninstalled');
+      row(`removed ${r.mechanism} autostart (sessions kept)`);
+      outro('daemon uninstall');
+      return 0;
+    }
+    case 'status':
+      await runStatus();
+      return 0;
+    default:
+      intro('whatsappman — daemon');
+      fail('usage: whatsappman daemon install [--print] | uninstall | status');
+      outro('daemon');
+      return 1;
+  }
+}
+
 async function runNumbers(): Promise<void> {
   try {
     const res = await request<{ sessions: SessionSummary[] }>('list_sessions');
@@ -74,7 +133,12 @@ async function runStatus(): Promise<void> {
 
 function printHelp(): void {
   intro('whatsappman — commands');
+  section('setup');
+  row('init             install daemon + link a number + register (one-shot)');
+  row('doctor           environment + daemon pre-flight checks');
+  row('register [--write]   print/write the MCP config for your AI tools');
   section('daemon');
+  row('daemon install [--print] / uninstall   OS autostart (launchd/systemd/…)');
   row('start            start the always-on daemon');
   row('stop             stop the daemon (clean)');
   row('restart          restart the daemon');
@@ -122,6 +186,21 @@ export async function cliMain(args: string[]): Promise<number> {
   const cmd = args[0];
 
   switch (cmd) {
+    case 'init': {
+      const label = takeFlag(args, '--label');
+      const skipReg = hasFlag(args, '--no-register');
+      return runInit(label, skipReg);
+    }
+
+    case 'doctor':
+      return runDoctor();
+
+    case 'register':
+      return runRegister(hasFlag(args, '--write'));
+
+    case 'daemon':
+      return runDaemonSub(args);
+
     case 'status':
       if (args[1]) return runStatusOne(args[1]);
       await runStatus();

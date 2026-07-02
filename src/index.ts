@@ -11,8 +11,9 @@
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
-  // Daemon mode.
-  if (args[0] === 'daemon' && (args[1] === 'start' || args[1] === undefined)) {
+  // Daemon mode — only `daemon start` runs the long-lived process. Other
+  // `daemon <sub>` commands (install/uninstall/status) are handled by the CLI.
+  if (args[0] === 'daemon' && args[1] === 'start') {
     const { runDaemon } = await import('./daemon/main.js');
     await runDaemon();
     return; // daemon keeps the event loop alive

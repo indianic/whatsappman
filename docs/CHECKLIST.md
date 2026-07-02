@@ -74,16 +74,19 @@ items lifted/adapted from the `@mcphub/plugin-baileys-whatsapp` plugin's
 - [x] Verified: CLI help lists all commands; MCP surface unchanged (8 tools, still **no raw send**); `draft_message` advertises all 5 kinds
 - [ ] **Manual sign-off (needs 2 phones)**: link a second number, send from each via `--from`, confirm routing + a real image/document delivery.
 
-## Phase 5 — Daemon install & OS lifecycle (always-on)
+## Phase 5 — Daemon install & OS lifecycle (always-on) ✅ DONE
 
-- [ ] `src/cli/daemon.ts` install/uninstall
-- [ ] macOS launchd: generate per-instance launcher `~/.whatsappman/bin/whatsappmand-<host>` + plist (`RunAtLoad`, `KeepAlive{SuccessfulExit:false, Crashed:true}`, `ThrottleInterval`) **[reuse: newra plist shape]**
-- [ ] launchd/systemd PATH handling — bake `process.execPath` dir + `/opt/homebrew/bin` into the job PATH **[reuse: mailman `ticker-install.ts`]**
-- [ ] Linux init-system detection (see [CROSS-OS.md](CROSS-OS.md)): systemd `--user` unit (`Restart=on-failure`, `enable-linger`) → OpenRC service (**Alpine**) → `nohup`+pidfile fallback (init-less/containers); `doctor` reports the active mechanism
-- [ ] Windows Task-Scheduler at-logon task; named-pipe transport
-- [ ] `whatsappman init` wires it all: `daemon install` → `start` → `link` first number → `register` MCP config
-- [ ] `whatsappman doctor` — daemon reachable, socket/creds perms, Node ≥18, `node`/`npx` on job PATH, per-session connection
-- [ ] **Manual test**: reboot / log out+in, confirm the daemon auto-starts and reconnects every number; `stop` stays stopped; kill -9 the daemon, confirm `KeepAlive` restarts it
+- [x] `src/daemon/install.ts` + CLI `daemon install [--print] / uninstall` (generation separated from load, so `--print` is a mutation-free dry run)
+- [x] macOS launchd: per-instance launcher `~/.whatsappman/bin/whatsappmand-<host>` + plist (`RunAtLoad`, `KeepAlive{SuccessfulExit:false, Crashed:true}`, `ThrottleInterval`, log paths) **[reuse: newra plist shape]**
+- [x] launchd/systemd PATH handling — bake `process.execPath` dir + `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin` into the job PATH **[reuse: mailman `ticker-install.ts`]**
+- [x] Linux init-system detection (see [CROSS-OS.md](CROSS-OS.md)): systemd `--user` unit (`Restart=on-failure`, `enable-linger`, `NoNewPrivileges`/`PrivateTmp`) → OpenRC service (**Alpine**) → `nohup`+pidfile fallback (init-less/containers); `doctor` reports the active mechanism
+- [~] Windows: `schtasks` mechanism detected + named-pipe transport already wired; the at-logon task writer itself is stubbed (returns the nohup-style note) — to finish when a Windows box is available
+- [x] `whatsappman init` wires it all: `daemon install` → `start` → `link` first number (QR) → `register` MCP config
+- [x] `whatsappman doctor` — Node ≥18, `node`/`npx` on PATH, config-dir + socket + token perms, daemon reachable, mechanism + installed?, per-session connection (pre-init state shown as advisories, not errors)
+- [x] `register` — prints `claude mcp add whatsappman -- npx -y @indianic/whatsappman` + a generic MCP JSON snippet; `--write` runs `claude mcp add` when the CLI is present (safe: no blind config-file mutation)
+- [x] Unit tests (30 total): hostname slug, baked PATH, plist (RunAtLoad/KeepAlive/throttle/PATH), systemd unit (Restart=on-failure), launcher script, `planInstall` writes nothing
+- [x] Verified without mutating the system: `daemon install --print` shows the exact plist + launcher; confirmed nothing written to `~/Library/LaunchAgents`; `doctor` runs read-only
+- [ ] **Manual sign-off (mutates the real machine)**: run `whatsappman init` for real, reboot / log out+in and confirm auto-start + reconnect; `stop` stays stopped; `kill -9` the daemon and confirm `KeepAlive` restarts it.
 
 ## Phase 6 — Scheduling (daemon-held)
 
