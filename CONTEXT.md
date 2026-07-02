@@ -120,6 +120,7 @@ processes**:
 ## Full docs
 
 - [README.md](README.md) — pitch, install, usage examples
+- [docs/FEATURES.md](docs/FEATURES.md) — features, flow & how-it-works (non-technical + technical)
 - [docs/PLAN.md](docs/PLAN.md) — the full architecture (this file's source material)
 - [docs/SKILLS.md](docs/SKILLS.md) — every MCP tool, called by Claude
 - [docs/CLI.md](docs/CLI.md) — every terminal command, run by you

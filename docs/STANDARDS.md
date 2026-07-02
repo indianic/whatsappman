@@ -97,6 +97,43 @@ an AI host never has to parse decorative output.
 | `publishConfig.registry` | `https://npm.indianic.in/` (private IndiaNIC registry) |
 | Publish | **only after explicit confirmation** — never automatic (matches mailman) |
 
+## Repository structure (keep it consistent)
+
+A fixed layout — new files go in their established home; don't scatter docs at
+the root or mix concerns across `src/` subfolders.
+
+```
+whatsappman/
+├── README.md · CONTEXT.md · CHANGELOG.md    root docs ONLY (orientation + releases)
+├── package.json · tsconfig.json · eslint.config.js · .gitignore
+├── bin/whatsappman.js                        published bin shim
+├── docs/                                     ALL detailed docs live here
+│   ├── FEATURES.md PLAN.md SKILLS.md CLI.md
+│   └── STANDARDS.md SECURITY.md CROSS-OS.md CHECKLIST.md
+├── src/                                      one concern per subfolder
+│   ├── index.ts response.ts errors.ts status.ts version.ts audit.ts logging.ts
+│   ├── cli/        one file per command (+ tree.ts, update-notifier.ts, interactive.ts)
+│   ├── config/     paths, schema (zod), store (atomic), state, sessions, scheduled
+│   ├── daemon/     main + session-manager, scheduler, notify, and one file per concern
+│   ├── ipc/        protocol, transport, access, server, client
+│   └── mcp/        server.ts (MCP tool registry)
+└── test/           one <module>.test.ts per source module
+```
+
+Rules:
+- **Root holds only** `README` / `CONTEXT` / `CHANGELOG` + config + `bin/`. Every
+  other document goes in `docs/` (and gets linked from the README + CONTEXT doc
+  indexes).
+- **`src/` is grouped by layer** (`cli` / `config` / `daemon` / `ipc` / `mcp`); a
+  new module goes in the folder matching its concern, not at `src/` root unless
+  it's a cross-cutting primitive (`response`, `errors`, `status`, `version`,
+  `audit`, `logging`).
+- **Every source module has a matching `test/<module>.test.ts`.**
+- **Runtime state is never in the repo** — it lives under `~/.whatsappman/` (see
+  `config/paths.ts`); `.gitignore` guards any stray local `.whatsappman/`.
+- Use `git mv` when relocating a file, and fix its inbound links (README/CONTEXT
+  indexes + any `Related docs` sections) in the same change.
+
 ## The single-source-of-truth rules (mailman lessons)
 
 - **`state.json`'s `defaultSession` is the only place** that decides the default

@@ -321,8 +321,8 @@ Passive notifier: a cached, TTY-only "update available" line before commands.
 
 ## Related docs
 
-- `README.md` — pitch + install
-- `CONTEXT.md` — condensed orientation + key decisions
-- `docs/PLAN.md` — full architecture · `docs/SKILLS.md` — MCP tools · `docs/CLI.md` — commands
-- `docs/SECURITY.md` — threat model · `docs/CROSS-OS.md` — platform matrix
-- `docs/CHECKLIST.md` — phase-by-phase build log · `CHANGELOG.md` — release notes
+- [`../README.md`](../README.md) — pitch + install
+- [`../CONTEXT.md`](../CONTEXT.md) — condensed orientation + key decisions
+- [`PLAN.md`](PLAN.md) — full architecture · [`SKILLS.md`](SKILLS.md) — MCP tools · [`CLI.md`](CLI.md) — commands
+- [`SECURITY.md`](SECURITY.md) — threat model · [`CROSS-OS.md`](CROSS-OS.md) — platform matrix
+- [`STANDARDS.md`](STANDARDS.md) — conventions · [`CHECKLIST.md`](CHECKLIST.md) — build log · [`../CHANGELOG.md`](../CHANGELOG.md) — release notes

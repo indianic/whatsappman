@@ -115,7 +115,7 @@ scoping, group administration.
 
 ## Docs
 
-- [FEATURES.md](FEATURES.md) — **features, flow & how it works** (non-technical + technical, with diagrams)
+- [docs/FEATURES.md](docs/FEATURES.md) — **features, flow & how it works** (non-technical + technical, with diagrams)
 - [CONTEXT.md](CONTEXT.md) — start here: condensed overview, status, key decisions
 - [docs/PLAN.md](docs/PLAN.md) — full architecture: daemon, socket IPC, sessions, tools, flows
 - [docs/SKILLS.md](docs/SKILLS.md) — the MCP tools this server exposes ("skills"), called by Claude
