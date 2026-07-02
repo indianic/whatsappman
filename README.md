@@ -80,7 +80,9 @@ token, zod validation), Baileys linking with a terminal QR, multi-number
 support, the draft→confirm→send flow across all five message kinds (text,
 image, document, location, contact), bulk send, daemon-held scheduling, send
 history, settings, desktop notifications, `init`/`doctor`/`register`/`reset`,
-and the OS autostart install (launchd/systemd/OpenRC). **50 unit tests pass**
+and the OS autostart install (launchd/systemd/OpenRC). Registering the MCP
+server is one command (`register --write [--tools …]`) that wires up Claude
+Code, Cursor, Gemini CLI, Windsurf, and Codex. **83 unit tests pass**
 (lint + typecheck + build green), and every CLI command + all 12 MCP tools have
 been smoke-tested end-to-end on this machine.
 

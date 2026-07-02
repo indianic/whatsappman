@@ -107,7 +107,7 @@ items lifted/adapted from the `@mcphub/plugin-baileys-whatsapp` plugin's
 - [x] Unit tests (38 total): `sent.jsonl` rotation, `readRecent` newest-first + limit + `from` filter + corrupt-line skip
 - [x] Verified: settings round-trip to disk (with `schemaVersion`), reset wipes cleanly, MCP surface now 12 tools (list_recent added), still **no raw send**
 - [x] `update`/`upgrade` self-update — `whatsappman update` checks npm.indianic.in (via the `@indianic:registry` scope route), `npm install -g @latest` if newer, then restarts the daemon so it loads the new build; no-op "already up to date" when current. Verified live against the published 0.1.0.
-- [~] `register` multi-tool config writer (Cursor/Gemini/Windsurf/Codex) — currently prints the snippet + `--write` does Claude Code; full multi-tool writer deferred
+- [x] `register` multi-tool config writer (2026-07-02) — `register --write [--tools …] [--project]` writes/merges the `whatsappman` MCP entry into Claude Code (via official `claude mcp add`), Cursor, Gemini CLI, Windsurf, and Codex (idempotent JSON merge / TOML block replace, preserves unrelated servers). Ported the pure writer from mailman's `editor-config.ts` (no `@clack` dep — non-interactive). 12 unit tests + verified end-to-end against a temp HOME.
 - [x] README / CONTEXT / docs final pass against the shipped surface (commit 505a104)
 
 ## Phase 8 — Security hardening & cross-OS (see [SECURITY.md](SECURITY.md))

@@ -1,11 +1,17 @@
 import { execFileSync } from 'node:child_process';
-import { intro, outro, section, row, fact, attention } from './tree.js';
+import { intro, outro, section, row, fact, attention, fail } from './tree.js';
+import { EDITORS, resolveTools, writeEditorConfig, type Scope } from './editor-config.js';
 
 /**
- * Register the whatsappman MCP server with AI editors. Deliberately safe: it
- * prints the exact command + JSON snippet rather than mutating arbitrary editor
- * config files. `register --write` runs `claude mcp add` when the Claude CLI is
- * present. (A fuller multi-tool config writer, like mailman's, can come later.)
+ * Register the whatsappman MCP server with AI editors.
+ *
+ * - `register` (no flags): prints the exact command + per-tool config so the
+ *   user can wire it up by hand — mutates nothing.
+ * - `register --write [--tools a,b,c] [--project]`: writes/merges the
+ *   `whatsappman` MCP entry into each selected editor's config file (Claude
+ *   Code, Cursor, Gemini CLI, Windsurf, Codex). Claude Code prefers the
+ *   official `claude mcp add` when the CLI is present; the rest are written
+ *   directly (idempotent merge — see editor-config.ts).
  */
 
 const PKG = '@indianic/whatsappman';
@@ -20,31 +26,68 @@ function claudeCliAvailable(): boolean {
   }
 }
 
-export function runRegister(write: boolean): number {
+/** Wire Claude Code via the official CLI; returns false if it isn't available/failed so the caller can fall back. */
+function tryClaudeCli(): boolean {
+  if (!claudeCliAvailable()) return false;
+  try {
+    execFileSync('claude', ['mcp', 'add', 'whatsappman', '--', 'npx', '-y', PKG], { stdio: 'inherit' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function runRegister(write: boolean, toolsSpec?: string, scope: Scope = 'global'): number {
   intro('whatsappman — register');
 
-  if (write && claudeCliAvailable()) {
-    try {
-      execFileSync('claude', ['mcp', 'add', 'whatsappman', '--', 'npx', '-y', PKG], {
-        stdio: 'inherit',
-      });
-      section('done');
-      fact('registered with Claude Code via `claude mcp add`', true);
+  if (write) {
+    const ids = resolveTools(toolsSpec);
+    if (ids.length === 0) {
+      fail(`no known tools in "${toolsSpec}" — valid: ${EDITORS.map((e) => e.id).join(', ')} (or "all")`);
+      outro('register');
+      return 1;
+    }
+
+    section('editor config');
+    let wrote = 0;
+    for (const id of ids) {
+      const editor = EDITORS.find((e) => e.id === id)!;
+      try {
+        // Claude Code: use the official CLI when we can — it owns ~/.claude.json.
+        if (id === 'claude' && tryClaudeCli()) {
+          row('Claude Code: registered via `claude mcp add`');
+          wrote++;
+          continue;
+        }
+        const result = writeEditorConfig(editor, scope);
+        row(`${result.label}: ${result.action} ${result.file}`);
+        wrote++;
+      } catch (err) {
+        fail(`${editor.label}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    if (wrote > 0) {
+      fact(`registered with ${wrote} tool${wrote === 1 ? '' : 's'} — restart the tool to pick it up`, true);
       outro('register');
       return 0;
-    } catch {
-      attention('`claude mcp add` failed — falling back to printing the command');
     }
+    outro('register');
+    return 1;
   }
 
+  // Print-only path (mutates nothing).
   section('Claude Code');
   row(ADD_CMD);
-  section('generic MCP config (Cursor / Windsurf / others)');
+  section('generic MCP config (Cursor / Windsurf / Gemini / others)');
   row('"whatsappman": {');
   row('  "command": "npx",');
   row(`  "args": ["-y", "${PKG}"]`);
   row('}');
-  attention('run the command above (or paste the JSON) in your AI tool, then restart it');
+  section('write it for me');
+  row('whatsappman register --write               (all supported tools)');
+  row('whatsappman register --write --tools cursor,codex');
+  attention('or run the command / paste the JSON above, then restart your AI tool');
   outro('register');
   return 0;
 }

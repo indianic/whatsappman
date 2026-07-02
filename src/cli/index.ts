@@ -201,7 +201,7 @@ function printHelp(): void {
   section('setup');
   row('init             install daemon + link a number + register (one-shot)');
   row('doctor           environment + daemon pre-flight checks');
-  row('register [--write]   print/write the MCP config for your AI tools');
+  row('register [--write]   print/write MCP config (--tools claude,cursor,gemini,windsurf,codex)');
   section('daemon');
   row('daemon install [--print] / uninstall   OS autostart (launchd/systemd/…)');
   row('start            start the always-on daemon');
@@ -283,8 +283,11 @@ export async function cliMain(args: string[]): Promise<number> {
     case 'doctor':
       return runDoctor();
 
-    case 'register':
-      return runRegister(hasFlag(args, '--write'));
+    case 'register': {
+      const tools = takeFlag(args, '--tools');
+      const scope = hasFlag(args, '--project') ? 'project' : 'global';
+      return runRegister(hasFlag(args, '--write'), tools, scope);
+    }
 
     case 'daemon':
       return runDaemonSub(args);
