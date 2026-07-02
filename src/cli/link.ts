@@ -4,6 +4,7 @@ import { request } from '../ipc/client.js';
 import { startDaemon } from './daemon-control.js';
 import { isDaemonAlive } from '../daemon/lock.js';
 import { normalizeLabel } from '../config/sessions.js';
+import { requireTty } from './interactive.js';
 import { WhatsAppManError } from '../errors.js';
 
 interface LinkState {
@@ -42,6 +43,10 @@ export async function runRelink(rawLabel: string | undefined): Promise<number> {
 }
 
 async function linkFlow(label: string, method: 'link' | 'relink'): Promise<number> {
+  // Pairing renders a QR to scan — pointless (and would hang polling) without a
+  // real terminal, so refuse early in an AI-tool shell / pipe.
+  if (!requireTty(`whatsappman ${method}`)) return 1;
+
   intro(`whatsappman — ${method} "${label}"`);
 
   if (!isDaemonAlive()) {

@@ -4,6 +4,7 @@ import { intro, outro, section, row, fail, attention } from './tree.js';
 import { baseDir } from '../config/paths.js';
 import { stopDaemon } from './daemon-control.js';
 import { uninstall as osUninstall } from '../daemon/install.js';
+import { isInteractiveTerminal } from './interactive.js';
 
 async function confirmYes(promptText: string): Promise<boolean> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -23,6 +24,11 @@ export async function runReset(yes: boolean): Promise<number> {
   attention('numbers, credentials, logs, and scheduled sends. Cannot be undone.');
 
   if (!yes) {
+    if (!isInteractiveTerminal()) {
+      fail('reset needs confirmation — re-run with --yes in a non-interactive shell.');
+      outro('reset');
+      return 1;
+    }
     const ok = await confirmYes('Type "yes" to wipe everything: ');
     if (!ok) {
       row('aborted');

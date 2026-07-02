@@ -11,6 +11,7 @@ import { runSettings } from './settings.js';
 import { runRecent } from './recent.js';
 import { runReset } from './reset.js';
 import { runUpdate } from './update.js';
+import { maybeNotifyUpdate, refreshUpdateCache, REFRESH_COMMAND } from './update-notifier.js';
 import { install as osInstall, uninstall as osUninstall, planInstall } from '../daemon/install.js';
 import { request } from '../ipc/client.js';
 import { offlineStatus, diskSessionSummaries, type StatusReport } from '../status.js';
@@ -262,6 +263,15 @@ function unescape(s: string): string {
 /** CLI entrypoint. Returns the process exit code. */
 export async function cliMain(args: string[]): Promise<number> {
   const cmd = args[0];
+
+  // Hidden: the detached background refresh of the update-check cache.
+  if (cmd === REFRESH_COMMAND) {
+    await refreshUpdateCache();
+    return 0;
+  }
+
+  // Passive "update available" notice before the command's own output.
+  maybeNotifyUpdate(cmd);
 
   switch (cmd) {
     case 'init': {

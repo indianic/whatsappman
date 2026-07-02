@@ -2,6 +2,7 @@ import readline from 'node:readline';
 import { intro, outro, section, row, fact, fail, attention, pad } from './tree.js';
 import { request } from '../ipc/client.js';
 import { WhatsAppManError } from '../errors.js';
+import { isInteractiveTerminal } from './interactive.js';
 import type { SessionSummary } from '../status.js';
 
 function reportError(err: unknown, label: string): number {
@@ -64,6 +65,11 @@ export async function runDelete(label: string | undefined, yes: boolean): Promis
   if (!requireLabel('delete', label)) return 1;
   intro(`whatsappman — delete "${label}"`);
   if (!yes) {
+    if (!isInteractiveTerminal()) {
+      fail(`delete needs confirmation — re-run with --yes in a non-interactive shell.`);
+      outro('delete');
+      return 1;
+    }
     attention(`this permanently removes "${label}" (creds + history). This cannot be undone.`);
     const ok = await confirmYes('Type "yes" to confirm: ');
     if (!ok) {

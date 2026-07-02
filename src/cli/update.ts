@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { intro, outro, section, row, fact, attention, fail } from './tree.js';
 import { getVersion } from '../version.js';
+import { isNewerVersion } from './update-notifier.js';
 import { isDaemonAlive } from '../daemon/lock.js';
 import { restartDaemon } from './daemon-control.js';
 
@@ -33,7 +34,9 @@ export async function runUpdate(): Promise<number> {
   row(`installed   ${current}`);
   row(`latest      ${latest}`);
 
-  if (latest === current) {
+  // Only upgrade when the registry is strictly newer — so a dev build that's
+  // ahead of the published version never gets "updated" backwards.
+  if (!isNewerVersion(latest, current)) {
     outro(`already up to date (${current})`);
     return 0;
   }

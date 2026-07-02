@@ -4,6 +4,7 @@ import { install } from '../daemon/install.js';
 import { startDaemon } from './daemon-control.js';
 import { runLink } from './link.js';
 import { runRegister } from './register.js';
+import { requireTty } from './interactive.js';
 
 /**
  * First-run wizard: create the config dir, install the OS autostart job, start
@@ -11,6 +12,9 @@ import { runRegister } from './register.js';
  * recommended one-command setup. Idempotent-ish (install unloads+reloads).
  */
 export async function runInit(label: string | undefined, skipRegister: boolean): Promise<number> {
+  // init pairs a number via QR — a real terminal is required.
+  if (!requireTty('whatsappman init')) return 1;
+
   intro('whatsappman — init');
   ensureBaseDir();
 
