@@ -4,6 +4,8 @@ All notable changes to `@indianic/whatsappman` are documented here.
 
 ## [Unreleased]
 
+- fix(settings): `settings set <numeric-key> ""` (an empty/whitespace value) now errors instead of silently coercing to `0` (`Number('')` is `0`).
+- test: add coverage for the IPC protocol method↔schema invariant + param validation, session-label normalization/listing, MCP response/error envelopes, and settings value coercion (108 tests total, up from 67 at the start of the day).
 - fix(daemon): keep the daemon crash-supervised across `restart` / `update`. `startDaemon()` used to always detached-spawn, so after a `whatsappman restart` (or `update`, which restarts) the daemon ran *outside* launchd/systemd and a crash was no longer auto-recovered (KeepAlive / Restart=on-failure) until next login. It now prefers the installed supervisor (`launchctl kickstart` / `systemctl --user start` / `rc-service start` / `schtasks /Run`), falling back to a detached spawn only when no autostart job is installed. Live-proven on launchd; per-platform command shapes unit-tested.
 - feat(daemon/windows): implement the Windows Task Scheduler autostart writer (was stubbed). `daemon install` on Windows now registers an at-logon task with restart-on-failure (parity with launchd `KeepAlive` / systemd `Restart=on-failure`) via a UTF-16LE task XML; `install`/`uninstall`/`isInstalled` wired through `schtasks /Create /XML|/Delete|/Query`. Unit-tested; generated XML validated well-formed. Real execution on a Windows box remains the only pending sign-off.
 
