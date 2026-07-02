@@ -107,7 +107,7 @@ items lifted/adapted from the `@mcphub/plugin-baileys-whatsapp` plugin's
 - [x] Verified: settings round-trip to disk (with `schemaVersion`), reset wipes cleanly, MCP surface now 12 tools (list_recent added), still **no raw send**
 - [~] `update`/`upgrade` self-update — deferred (needs the published package on npm.indianic.in to test against)
 - [~] `register` multi-tool config writer (Cursor/Gemini/Windsurf/Codex) — currently prints the snippet + `--write` does Claude Code; full multi-tool writer deferred
-- [ ] README / CONTEXT / docs final pass against the shipped surface — pending
+- [x] README / CONTEXT / docs final pass against the shipped surface (commit 505a104)
 
 ## Phase 8 — Security hardening & cross-OS (see [SECURITY.md](SECURITY.md))
 
