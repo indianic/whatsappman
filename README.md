@@ -207,6 +207,12 @@ to personal and low-volume use; automated **bulk** blasting risks getting the
 number banned by WhatsApp. The `defaultDelayMs` / `maxBulkRecipients` throttles
 exist for exactly this reason — use them.
 
+**Keep `~/.whatsappman` out of cloud sync and backups.** That folder holds your
+live linked-device session creds — a synced or backed-up copy is a fully
+portable clone of your WhatsApp connection. Exclude it from iCloud Drive, Time
+Machine, Dropbox, and OneDrive; syncing it off-box defeats the machine-bound
+protection. See [docs/SECURITY.md](docs/SECURITY.md) for the full rationale.
+
 ## License
 
 MIT

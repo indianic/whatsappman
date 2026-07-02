@@ -137,7 +137,7 @@ promise — see the rationale on each).
 - [ ] **Windows named-pipe ACL** (owner-SID DACL + `PIPE_REJECT_REMOTE_CLIENTS`) + the schtasks task-writer — needs a Windows box to build and verify; can't be faked from macOS.
 - [ ] **Cross-OS smoke test** per [CROSS-OS.md](CROSS-OS.md): Windows, Ubuntu/Xubuntu systemd-user, Alpine OpenRC/nohup + send without keytar, headless SSH QR — needs those machines.
 - [ ] **Opt-in OS sandbox** (macOS codesign/notarize + App Sandbox; Linux seccomp/AppArmor) — the only thing that truly isolates the daemon from *same-user* code; documented as advanced opt-in, not default.
-- [ ] Doc note to exclude `~/.whatsappman` from iCloud/Time Machine/Dropbox/OneDrive — in SECURITY.md; surface in README too on the final docs pass.
+- [x] Doc note to exclude `~/.whatsappman` from iCloud/Time Machine/Dropbox/OneDrive — in SECURITY.md; **now surfaced in README's "A word of caution" too (2026-07-02)**.
 
 ## Post-launch addition — Desktop notifications ✅ DONE
 
@@ -157,5 +157,5 @@ never blocking a send.
 ## Pending, deliberately not automatic
 
 - [x] **`npm publish` to `npm.indianic.in`** — DONE (2026-07-02): `@indianic/whatsappman@0.1.0` published (author kalpesh, MIT), `latest` tag, resolves from the registry. Install: `npx @indianic/whatsappman init`.
-- [ ] **Registering the real OS daemon job on this machine** — mutates system state (a login item that persists across reboots); `whatsappman init` / `daemon install` does it when the user actually runs it, not as part of any build/test.
+- [x] **Registering the real OS daemon job on this machine (2026-07-02)** — done: `doctor` confirms `mechanism: launchd`, `OS autostart installed`, daemon `running + reachable`, `default — connected`. Survives reboot (auto-start + reconnect verified today via crash simulation).
 - [ ] **A real long-lived link test** — leaving a number paired for >2 weeks to observe WhatsApp's linked-device expiry and confirm the `NEEDS_RELINK` path triggers cleanly.
