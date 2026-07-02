@@ -73,9 +73,34 @@ Claude: [1] work      +91 98xxxxxxx0   connected
 
 ## Status
 
-**Planning stage — nothing built yet.** This repo currently holds the design
-docs. See [docs/CHECKLIST.md](docs/CHECKLIST.md) for the phased build order
-and [docs/PLAN.md](docs/PLAN.md) for the full architecture.
+**Functionally complete and self-verified on macOS; not yet real-hardware
+signed-off or published.** All core phases are built and committed on the
+`dev-kalpesh` branch: the two-process daemon + local-socket IPC (capability
+token, zod validation), Baileys linking with a terminal QR, multi-number
+support, the draft→confirm→send flow across all five message kinds (text,
+image, document, location, contact), bulk send, daemon-held scheduling, send
+history, settings, desktop notifications, `init`/`doctor`/`register`/`reset`,
+and the OS autostart install (launchd/systemd/OpenRC). **50 unit tests pass**
+(lint + typecheck + build green), and every CLI command + all 12 MCP tools have
+been smoke-tested end-to-end on this machine.
+
+What's **not** done, and honestly so — each needs hardware or an external step I
+can't self-serve:
+
+- **Real send sign-off** — an actual QR scan + message delivery + reconnect-
+  after-restart needs a phone. Everything up to the scan is verified.
+- **Deferred security hardening** — keytar-backed credential encryption (a
+  native dep that would break the pure-Node/Alpine promise), an explicit
+  `getpeereid()` peer-UID check (needs a native addon; the `0600` socket already
+  enforces the same-UID boundary), and the Windows named-pipe ACL — see
+  [docs/SECURITY.md](docs/SECURITY.md).
+- **Cross-OS verification** — coded for macOS/Linux/Windows, only exercised on
+  macOS so far (see [docs/CROSS-OS.md](docs/CROSS-OS.md)).
+- **`npm publish` to `npm.indianic.in`** — pending, and only ever after
+  explicit confirmation.
+
+See [docs/CHECKLIST.md](docs/CHECKLIST.md) for the exact done-vs-deferred
+breakdown per phase and [docs/PLAN.md](docs/PLAN.md) for the architecture.
 
 The Baileys session/send logic is not written from scratch: it is adapted
 from IndiaNIC's existing **`@mcphub/plugin-baileys-whatsapp`** plugin
@@ -99,18 +124,23 @@ scoping, group administration.
 - [docs/CROSS-OS.md](docs/CROSS-OS.md) — cross-platform support matrix (macOS, Windows, Ubuntu/Xubuntu/Alpine Linux)
 - [docs/CHECKLIST.md](docs/CHECKLIST.md) — phased implementation checklist
 
-## Quick setup (planned)
+## Quick setup
 
 One command does the whole thing — installs the always-on daemon, links your
-first number by QR, and **writes the MCP config into whichever AI tools you
-pick** (Claude Code, Cursor, Gemini CLI, Windsurf, Codex):
+first number by QR, and prints the MCP registration for your AI tools:
 
 ```bash
-npx @indianic/whatsappman init
+# once published:  npx @indianic/whatsappman init
+# from the repo now:  npm i && npm run build && node dist/index.js init
 ```
 
-Then, from any Claude session: *"whatsappman, send … to …"* — draft, confirm,
-sent.
+`init` runs: install the OS autostart daemon → start it → render a QR to scan
+(WhatsApp → Linked Devices) → print the `claude mcp add` line. Then, from any
+Claude session: *"whatsappman, send … to …"* — draft, confirm, sent.
+
+> **Note:** `init` loads a real OS login-item (launchd/systemd) and the QR scan
+> pairs your live WhatsApp account — both are deliberate, one-time actions you
+> run yourself, not part of any build or test.
 
 ## The reliability promise
 

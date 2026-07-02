@@ -113,13 +113,14 @@ Idempotent on `draftId`.
 - **Output**: `{ cancelled: true }`.
 - **Errors**: `DRAFT_NOT_FOUND`.
 
-### `send_bulk`
-Send one message to many recipients, throttled. Still preview-gated: this
-drafts a *bulk* draft that `confirm_send` dispatches. One failure doesn't abort
-the batch.
-- **Input**: `{ from?: string, to: string[], kind, text?, path?, delayMs? }`.
-- **Output** (after confirm): `{ sent, failed, results: [{ to, status, error? }] }`.
-- **Errors**: `BULK_LIMIT_EXCEEDED`, plus the `draft_message`/`confirm_send` set.
+### `send_bulk` — **CLI-only, not an MCP tool**
+Send one text to many recipients, throttled (`settings.defaultDelayMs`) and
+capped (`settings.maxBulkRecipients` → `BULK_LIMIT_EXCEEDED`); one failure
+doesn't abort the batch. As shipped this is **deliberately not exposed to the
+LLM** — a mass-send is exactly what could get a number banned, so it lives
+behind the terminal command `whatsappman send-bulk <text> --to <a,b,c>` (see
+[docs/CLI.md](CLI.md)), not the MCP surface. The MCP tool list is the 12 tools
+above.
 
 ---
 

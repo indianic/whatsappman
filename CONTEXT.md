@@ -23,9 +23,22 @@ who delivers the message).
 
 ## Status
 
-**Planning stage.** Docs written, no code yet. See
-[docs/CHECKLIST.md](docs/CHECKLIST.md) for the phased build order.
+**Functionally complete, self-verified on macOS, committed on `dev-kalpesh`.**
+See [docs/CHECKLIST.md](docs/CHECKLIST.md) for the per-phase done-vs-deferred
+breakdown.
 
+- **Built (phases 0–8 + notifications)**: two-process daemon + local-socket IPC
+  (capability token, zod validation, method allowlist); Baileys link with a
+  terminal QR; multi-number; draft→confirm→send across all five kinds (text,
+  image, document, location, contact); bulk; daemon-held scheduling; history;
+  settings; desktop notifications; `init`/`doctor`/`register`/`reset`; OS
+  autostart (launchd/systemd/OpenRC). **50 tests**, lint/typecheck/build green,
+  every CLI command + all 12 MCP tools smoke-tested on this machine.
+- **Not done (needs hardware / external step)**: real QR-scan + delivery + a
+  reconnect-after-restart sign-off (needs a phone); keytar cred encryption,
+  `getpeereid()` peer-UID check, Windows named-pipe ACL (native deps / a Windows
+  box — see [docs/SECURITY.md](docs/SECURITY.md)); cross-OS verification beyond
+  macOS; `npm publish` (only after explicit confirmation).
 - **Reuse, not from-scratch**: the Baileys session/send logic is adapted from
   IndiaNIC's `@mcphub/plugin-baileys-whatsapp` plugin's `src/standalone/`
   variant (no mcphub-core, no Redis, filesystem-auth). The daemon
