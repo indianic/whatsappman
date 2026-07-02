@@ -10,6 +10,7 @@ import { runRegister } from './register.js';
 import { runSettings } from './settings.js';
 import { runRecent } from './recent.js';
 import { runReset } from './reset.js';
+import { runUpdate } from './update.js';
 import { install as osInstall, uninstall as osUninstall, planInstall } from '../daemon/install.js';
 import { request } from '../ipc/client.js';
 import { offlineStatus, diskSessionSummaries, type StatusReport } from '../status.js';
@@ -39,6 +40,8 @@ const COMMANDS = [
   'recent',
   'settings',
   'reset',
+  'update',
+  'upgrade',
   'help',
   'examples',
   'version',
@@ -225,6 +228,7 @@ function printHelp(): void {
   section('history & settings');
   row('recent [--limit N] [--from label]   recent send history');
   row('settings get | set <key> <value>    view/change settings');
+  row('update (upgrade)     update to the latest published version');
   row('reset [--yes]        wipe everything for a clean re-setup');
   section('general');
   row('help             this list');
@@ -289,6 +293,10 @@ export async function cliMain(args: string[]): Promise<number> {
 
     case 'reset':
       return runReset(hasFlag(args, '--yes'));
+
+    case 'update':
+    case 'upgrade':
+      return runUpdate();
 
     case 'status':
       if (args[1]) return runStatusOne(args[1]);

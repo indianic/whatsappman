@@ -105,7 +105,7 @@ items lifted/adapted from the `@mcphub/plugin-baileys-whatsapp` plugin's
 - [x] `settings get`/`set <key> <value>` (validated + coerced; `get_settings`/`update_settings` IPC — CLI-only, not MCP), `whatsappman send` quick terminal send (Phase 2/4), `reset` (`--yes`: stop daemon → uninstall autostart → wipe config dir)
 - [x] Unit tests (38 total): `sent.jsonl` rotation, `readRecent` newest-first + limit + `from` filter + corrupt-line skip
 - [x] Verified: settings round-trip to disk (with `schemaVersion`), reset wipes cleanly, MCP surface now 12 tools (list_recent added), still **no raw send**
-- [~] `update`/`upgrade` self-update — deferred (needs the published package on npm.indianic.in to test against)
+- [x] `update`/`upgrade` self-update — `whatsappman update` checks npm.indianic.in (via the `@indianic:registry` scope route), `npm install -g @latest` if newer, then restarts the daemon so it loads the new build; no-op "already up to date" when current. Verified live against the published 0.1.0.
 - [~] `register` multi-tool config writer (Cursor/Gemini/Windsurf/Codex) — currently prints the snippet + `--write` does Claude Code; full multi-tool writer deferred
 - [x] README / CONTEXT / docs final pass against the shipped surface (commit 505a104)
 
