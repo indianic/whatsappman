@@ -32,6 +32,7 @@ const COMMANDS = [
   'default',
   'send',
   'send-bulk',
+  'scheduled',
   'help',
   'examples',
   'version',
@@ -104,6 +105,60 @@ async function runDaemonSub(args: string[]): Promise<number> {
   }
 }
 
+interface ScheduledItem {
+  scheduledId: string;
+  from: string;
+  toName: string;
+  kind: string;
+  fireAt: string;
+  status: string;
+}
+
+async function runScheduled(args: string[]): Promise<number> {
+  const sub = args[1];
+  if (sub === 'cancel') {
+    const id = args[2];
+    intro('whatsappman — scheduled cancel');
+    if (!id) {
+      fail('usage: whatsappman scheduled cancel <id>');
+      outro('scheduled');
+      return 1;
+    }
+    try {
+      await request('cancel_scheduled', { scheduledId: id });
+      section('cancelled');
+      row(id);
+      outro('scheduled');
+      return 0;
+    } catch (err) {
+      if (err instanceof WhatsAppManError) {
+        fail(`${err.code}: ${err.message}`);
+      } else throw err;
+      outro('scheduled');
+      return 1;
+    }
+  }
+
+  // default: list
+  intro('whatsappman — scheduled');
+  try {
+    const { scheduled } = await request<{ scheduled: ScheduledItem[] }>('list_scheduled');
+    section('scheduled');
+    if (scheduled.length === 0) row('none');
+    for (const s of scheduled) {
+      row(`${s.status.padEnd(9)} ${s.fireAt}  →  ${s.toName} (${s.kind})  [${s.scheduledId.slice(0, 8)}]`);
+    }
+    outro('scheduled');
+    return 0;
+  } catch (err) {
+    if (err instanceof WhatsAppManError && err.code === ErrorCode.DAEMON_DOWN) {
+      fail('daemon not running — run: whatsappman start');
+    } else throw err;
+    outro('scheduled');
+    return 1;
+  }
+}
+
 async function runNumbers(): Promise<void> {
   try {
     const res = await request<{ sessions: SessionSummary[] }>('list_sessions');
@@ -158,6 +213,9 @@ function printHelp(): void {
   row('send <to> --kind location --lat <n> --lng <n> [--name p]');
   row('send <to> --kind contact --contact-name n --contact-phone p');
   row('send-bulk <text> --to <a,b,c> [--from <label>]');
+  section('scheduled');
+  row('scheduled            list scheduled sends');
+  row('scheduled cancel <id>  cancel a pending scheduled send');
   section('general');
   row('help             this list');
   row('examples         setup + usage examples');
@@ -200,6 +258,9 @@ export async function cliMain(args: string[]): Promise<number> {
 
     case 'daemon':
       return runDaemonSub(args);
+
+    case 'scheduled':
+      return runScheduled(args);
 
     case 'status':
       if (args[1]) return runStatusOne(args[1]);

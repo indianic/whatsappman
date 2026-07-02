@@ -95,6 +95,25 @@ const TOOLS: Record<string, ToolDef> = {
     inputSchema: obj({ draftId: str('the id returned by draft_message') }, ['draftId']),
     method: 'cancel_draft',
   },
+  schedule_send: {
+    description:
+      'Send a previously drafted message at a future time, fired by the always-on daemon (works even if this session is closed). The draft is snapshotted, so it is fine for it to expire afterward. One-time only. Returns { scheduledId, fireAt }.',
+    inputSchema: obj(
+      { draftId: str('the id returned by draft_message'), fireAt: str('ISO-8601 time to send, e.g. 2026-07-03T09:00:00+05:30') },
+      ['draftId', 'fireAt'],
+    ),
+    method: 'schedule_send',
+  },
+  list_scheduled: {
+    description: 'List scheduled sends (optionally filtered by status: pending|sent|failed|cancelled).',
+    inputSchema: obj({ status: str('optional status filter') }),
+    method: 'list_scheduled',
+  },
+  cancel_scheduled: {
+    description: 'Cancel a pending scheduled send.',
+    inputSchema: obj({ scheduledId: str('the id returned by schedule_send') }, ['scheduledId']),
+    method: 'cancel_scheduled',
+  },
 };
 
 export async function runMcpServer(): Promise<void> {

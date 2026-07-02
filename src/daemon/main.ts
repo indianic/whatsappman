@@ -10,11 +10,19 @@ import { removeStaleSocket } from '../ipc/transport.js';
 import { buildStatus } from '../status.js';
 import { SessionManager } from './session-manager.js';
 import { DraftStore, type NewDraft } from './draft-store.js';
+import { Scheduler } from './scheduler.js';
 import { resolveAttachment } from './attachments.js';
 import { normalizeLabel, listSessionLabels } from '../config/sessions.js';
 import { WhatsAppManError, ErrorCode } from '../errors.js';
-import type { Method, SendTextParams, SendBulkParams, DraftMessageParams } from '../ipc/protocol.js';
-import type { State } from '../config/schema.js';
+import { appendSent } from '../audit.js';
+import type {
+  Method,
+  SendTextParams,
+  SendBulkParams,
+  DraftMessageParams,
+  ScheduleSendParams,
+} from '../ipc/protocol.js';
+import type { State, ScheduledEntry } from '../config/schema.js';
 
 /**
  * The always-on daemon. Phase 1 scope: acquire the single-instance lock, mint
@@ -46,12 +54,13 @@ export async function runDaemon(): Promise<void> {
 
   const sm = new SessionManager();
   const drafts = new DraftStore();
+  const scheduler = new Scheduler(sm);
 
   const labelFrom = (from?: string) => (from ? normalizeLabel(from) : undefined);
 
   const handlers = new Map<Method, Handler>([
     ['ping', () => ({ pong: true, pid: process.pid })],
-    ['status', () => buildStatus(startedAtMs, sm.listSummaries())],
+    ['status', () => buildStatus(startedAtMs, sm.listSummaries(), scheduler.list('pending').length)],
     ['list_sessions', () => ({ sessions: sm.listSummaries() })],
     [
       'link',
@@ -208,6 +217,16 @@ export async function runDaemon(): Promise<void> {
         const r = await sm.sendDraft(d);
         const sentAt = new Date().toISOString();
         drafts.markSent(draftId, { messageId: r.messageId, to: d.toJid, sentAt });
+        appendSent({
+          ts: sentAt,
+          from: d.from,
+          toJid: d.toJid,
+          toName: d.toName,
+          kind: d.kind,
+          messageId: r.messageId,
+          status: 'sent',
+          via: 'send',
+        });
         return { messageId: r.messageId, status: 'sent', to: d.toName, kind: d.kind, sentAt };
       },
     ],
@@ -217,6 +236,75 @@ export async function runDaemon(): Promise<void> {
         const { draftId } = params as { draftId: string };
         const ok = drafts.cancel(draftId);
         if (!ok) throw new WhatsAppManError(ErrorCode.DRAFT_NOT_FOUND, `no pending draft ${draftId}`);
+        return { cancelled: true };
+      },
+    ],
+    [
+      'schedule_send',
+      (params) => {
+        const { draftId, fireAt } = params as ScheduleSendParams;
+        const d = drafts.get(draftId);
+        if (!d) throw new WhatsAppManError(ErrorCode.DRAFT_NOT_FOUND, `no draft ${draftId}`);
+        if (d.state !== 'pending') {
+          throw new WhatsAppManError(ErrorCode.DRAFT_NOT_FOUND, `draft ${draftId} is ${d.state}`);
+        }
+        if (drafts.isExpired(d)) {
+          throw new WhatsAppManError(ErrorCode.DRAFT_EXPIRED, `draft ${draftId} expired`);
+        }
+        const fireMs = new Date(fireAt).getTime();
+        if (Number.isNaN(fireMs)) {
+          throw new WhatsAppManError(ErrorCode.BAD_REQUEST, `invalid fireAt: ${fireAt}`);
+        }
+        // Snapshot the draft into the schedule so it no longer depends on the
+        // in-memory draft, then consume the draft so it can't also be confirmed.
+        const entry: ScheduledEntry = {
+          id: crypto.randomUUID(),
+          from: d.from,
+          toJid: d.toJid,
+          toName: d.toName,
+          kind: d.kind,
+          text: d.text,
+          attachment: d.attachment,
+          latitude: d.latitude,
+          longitude: d.longitude,
+          locationName: d.locationName,
+          contactName: d.contactName,
+          contactPhone: d.contactPhone,
+          fireAt: new Date(fireMs).toISOString(),
+          createdAt: new Date().toISOString(),
+          status: 'pending',
+          messageId: null,
+          error: null,
+        };
+        scheduler.schedule(entry);
+        drafts.cancel(draftId);
+        return { scheduledId: entry.id, fireAt: entry.fireAt };
+      },
+    ],
+    [
+      'list_scheduled',
+      (params) => {
+        const status = (params as { status?: ScheduledEntry['status'] } | undefined)?.status;
+        return {
+          scheduled: scheduler.list(status).map((e) => ({
+            scheduledId: e.id,
+            from: e.from,
+            toName: e.toName,
+            kind: e.kind,
+            fireAt: e.fireAt,
+            status: e.status,
+          })),
+        };
+      },
+    ],
+    [
+      'cancel_scheduled',
+      (params) => {
+        const { scheduledId } = params as { scheduledId: string };
+        const ok = scheduler.cancel(scheduledId);
+        if (!ok) {
+          throw new WhatsAppManError(ErrorCode.SCHEDULED_NOT_FOUND, `no pending scheduled send ${scheduledId}`);
+        }
         return { cancelled: true };
       },
     ],
@@ -248,6 +336,7 @@ export async function runDaemon(): Promise<void> {
     // Clean SIGTERM exit → exit 0 so the OS supervisor (launchd KeepAlive) does
     // NOT treat it as a crash and restart us.
     try {
+      scheduler.clearAll();
       sm.shutdown();
       server.close();
     } catch {
@@ -268,6 +357,9 @@ export async function runDaemon(): Promise<void> {
 
   // Bring every already-linked number back online (no-op on first run).
   void sm.reconnectAll();
+
+  // Re-arm any pending scheduled sends (survive restarts).
+  scheduler.load();
 
   // The listening server keeps the event loop alive; nothing else to do.
 }

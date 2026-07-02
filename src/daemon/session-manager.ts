@@ -27,9 +27,23 @@ import {
   type GroupInfo,
 } from './contact-service.js';
 import { validateBulk } from './bulk.js';
-import type { Draft } from './draft-store.js';
 import type { SessionStatus, SessionMeta } from '../config/schema.js';
 import type { SessionSummary } from '../status.js';
+
+/** The minimum a dispatchable message needs — satisfied by both a Draft and a
+ *  scheduled entry, so sendDraft serves the confirm_send and scheduler paths. */
+export interface SendableMessage {
+  from: string;
+  toJid: string;
+  kind: 'text' | 'image' | 'document' | 'location' | 'contact';
+  text?: string;
+  attachment?: { absPath: string; filename: string; mimetype: string };
+  latitude?: number;
+  longitude?: number;
+  locationName?: string;
+  contactName?: string;
+  contactPhone?: string;
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -298,9 +312,10 @@ export class SessionManager {
     return { messageId: result?.key?.id ?? 'unknown' };
   }
 
-  /** Dispatch a confirmed draft of any kind to its resolved JID. The file bytes
-   *  for image/document are read here (at send time), not held in the draft. */
-  async sendDraft(draft: Draft): Promise<{ messageId: string }> {
+  /** Dispatch a confirmed message of any kind to its resolved JID. The file
+   *  bytes for image/document are read here (at send time). Serves both
+   *  confirm_send (a Draft) and the scheduler (a scheduled entry). */
+  async sendDraft(draft: SendableMessage): Promise<{ messageId: string }> {
     const socket = this.connectedSocket(draft.from);
     const jid = draft.toJid;
     let result;

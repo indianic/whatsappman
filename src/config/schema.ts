@@ -48,6 +48,44 @@ export const DEFAULT_SETTINGS: Settings = {
   alwaysConfirm: true,
 };
 
+export const DRAFT_KIND = ['text', 'image', 'document', 'location', 'contact'] as const;
+
+/** scheduled.json — one-time future sends, held by the always-on daemon.
+ *  Each entry snapshots the message so it doesn't depend on an in-memory draft. */
+export const scheduledEntrySchema = z.object({
+  id: z.string(),
+  from: z.string(), // session label
+  toJid: z.string(),
+  toName: z.string(),
+  kind: z.enum(DRAFT_KIND),
+  text: z.string().optional(),
+  attachment: z
+    .object({
+      absPath: z.string(),
+      filename: z.string(),
+      mimetype: z.string(),
+      sizeBytes: z.number(),
+    })
+    .optional(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
+  locationName: z.string().optional(),
+  contactName: z.string().optional(),
+  contactPhone: z.string().optional(),
+  fireAt: z.string(), // ISO-8601
+  createdAt: z.string(),
+  status: z.enum(['pending', 'sent', 'failed', 'cancelled']).default('pending'),
+  messageId: z.string().nullable().default(null),
+  error: z.string().nullable().default(null),
+});
+export type ScheduledEntry = z.infer<typeof scheduledEntrySchema>;
+
+export const scheduledFileSchema = z.object({
+  schemaVersion: z.literal(1),
+  entries: z.array(scheduledEntrySchema).default([]),
+});
+export type ScheduledFile = z.infer<typeof scheduledFileSchema>;
+
 /** sessions/<label>/meta.json — per-number metadata (auth creds live alongside in auth/). */
 export const sessionMetaSchema = z.object({
   schemaVersion: z.literal(1),

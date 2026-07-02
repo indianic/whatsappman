@@ -2,6 +2,7 @@ import os from 'node:os';
 import { readState } from './config/state.js';
 import { isDaemonAlive } from './daemon/lock.js';
 import { listSessionLabels, readMeta } from './config/sessions.js';
+import { readScheduled } from './config/scheduled.js';
 import type { SessionStatus } from './config/schema.js';
 
 /**
@@ -35,7 +36,11 @@ export interface StatusReport {
  * Built inside the running daemon. `sessions` comes from the live session
  * manager (see daemon/main.ts), so it reflects real-time connection state.
  */
-export function buildStatus(startedAtMs: number, sessions: SessionSummary[]): StatusReport {
+export function buildStatus(
+  startedAtMs: number,
+  sessions: SessionSummary[],
+  pendingScheduled = 0,
+): StatusReport {
   const state = readState();
   return {
     daemon: {
@@ -47,7 +52,7 @@ export function buildStatus(startedAtMs: number, sessions: SessionSummary[]): St
     },
     defaultSession: state?.defaultSession ?? null,
     sessions,
-    pendingScheduled: 0,
+    pendingScheduled,
   };
 }
 
@@ -84,6 +89,6 @@ export function offlineStatus(): StatusReport {
     },
     defaultSession: state?.defaultSession ?? null,
     sessions: diskSessionSummaries(),
-    pendingScheduled: 0,
+    pendingScheduled: readScheduled().filter((e) => e.status === 'pending').length,
   };
 }

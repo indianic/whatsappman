@@ -88,13 +88,14 @@ items lifted/adapted from the `@mcphub/plugin-baileys-whatsapp` plugin's
 - [x] Verified without mutating the system: `daemon install --print` shows the exact plist + launcher; confirmed nothing written to `~/Library/LaunchAgents`; `doctor` runs read-only
 - [ ] **Manual sign-off (mutates the real machine)**: run `whatsappman init` for real, reboot / log out+in and confirm auto-start + reconnect; `stop` stays stopped; `kill -9` the daemon and confirm `KeepAlive` restarts it.
 
-## Phase 6 — Scheduling (daemon-held)
+## Phase 6 — Scheduling (daemon-held) ✅ DONE
 
-- [ ] `src/config` scheduled.json schema + atomic store
-- [ ] `src/daemon/scheduler.ts` — timer loop; on boot reload `scheduled.json` and re-arm pending timers
-- [ ] `schedule_send` (snapshots the draft into the schedule), `list_scheduled`, `cancel_scheduled` tools + `whatsappman scheduled list`
-- [ ] Fire path reuses the pre-send health check + `message-service`; marks `sent`/`failed`; appends to `sent.jsonl`
-- [ ] **Manual test**: schedule a send a few minutes out, restart the daemon before it fires, confirm it still fires
+- [x] `scheduled.json` schema (`config/schema.ts`, snapshots the full per-kind payload) + atomic store (`config/scheduled.ts`)
+- [x] `src/daemon/scheduler.ts` — per-entry timers with capped delay (setTimeout 24.8-day cap → re-arm); on boot `load()` re-arms every pending entry; `computeDelayMs` pure/testable
+- [x] `schedule_send` (snapshots the in-memory draft into the schedule, then consumes the draft so it can't also be confirmed), `list_scheduled`, `cancel_scheduled` — IPC + MCP tools + `whatsappman scheduled [cancel <id>]`
+- [x] Fire path reuses the pre-send health check + `sendDraft`; marks `sent`/`failed`; appends to `sent.jsonl` (`src/audit.ts`); `confirm_send` also logs to `sent.jsonl` now
+- [x] Verified end-to-end (no phone needed): seeded a past-due + a future entry, started the daemon → past-due fired → health check (no session) → `failed` + logged to `sent.jsonl` with reason; future stayed `pending`; `status` shows the count; **after a restart the pending entry survived** (re-armed from disk)
+- [ ] **Manual sign-off (needs a connected number)**: schedule a real send a few minutes out, restart the daemon before it fires, confirm it actually delivers.
 
 ## Phase 7 — History, settings, polish
 

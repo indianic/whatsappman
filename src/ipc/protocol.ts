@@ -31,6 +31,9 @@ export const METHODS = [
   'disconnect',
   'relink',
   'delete_session',
+  'schedule_send',
+  'list_scheduled',
+  'cancel_scheduled',
 ] as const;
 export type Method = (typeof METHODS)[number];
 
@@ -104,6 +107,16 @@ const draftIdParam = z.object({ draftId: z.string().min(1) });
 const resolveParams = z.object({ from: z.string().min(1).optional(), query: z.string().min(1) });
 const fromParam = z.object({ from: z.string().min(1).optional() }).or(z.undefined());
 
+const scheduleSendParams = z.object({
+  draftId: z.string().min(1),
+  fireAt: z.string().min(1), // ISO-8601
+});
+export type ScheduleSendParams = z.infer<typeof scheduleSendParams>;
+const listScheduledParams = z
+  .object({ status: z.enum(['pending', 'sent', 'failed', 'cancelled']).optional() })
+  .or(z.undefined());
+const cancelScheduledParams = z.object({ scheduledId: z.string().min(1) });
+
 /** Per-method params schemas. */
 export const paramsSchemas: Record<Method, z.ZodType> = {
   ping: noParams,
@@ -124,4 +137,7 @@ export const paramsSchemas: Record<Method, z.ZodType> = {
   disconnect: labelParam,
   relink: labelParam,
   delete_session: labelParam,
+  schedule_send: scheduleSendParams,
+  list_scheduled: listScheduledParams,
+  cancel_scheduled: cancelScheduledParams,
 };
