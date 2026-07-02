@@ -37,6 +37,8 @@ export const settingsSchema = z.object({
   defaultDelayMs: z.number().int().min(0).default(2000),
   maxBulkRecipients: z.number().int().positive().default(100),
   alwaysConfirm: z.boolean().default(true),
+  /** Fire OS desktop notifications for actionable daemon events (default on). */
+  notifications: z.boolean().default(true),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 
@@ -46,6 +48,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultDelayMs: 2000,
   maxBulkRecipients: 100,
   alwaysConfirm: true,
+  notifications: true,
 };
 
 export const DRAFT_KIND = ['text', 'image', 'document', 'location', 'contact'] as const;

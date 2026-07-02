@@ -4,7 +4,7 @@ import { WhatsAppManError } from '../errors.js';
 import type { Settings } from '../config/schema.js';
 
 const NUMERIC_KEYS = ['draftTtlMinutes', 'defaultDelayMs', 'maxBulkRecipients'];
-const BOOL_KEYS = ['alwaysConfirm'];
+const BOOL_KEYS = ['alwaysConfirm', 'notifications'];
 const SETTABLE = [...NUMERIC_KEYS, ...BOOL_KEYS];
 
 function printSettings(s: Settings): void {
@@ -13,6 +13,7 @@ function printSettings(s: Settings): void {
   row(`defaultDelayMs     ${s.defaultDelayMs}`);
   row(`maxBulkRecipients  ${s.maxBulkRecipients}`);
   row(`alwaysConfirm      ${s.alwaysConfirm}`);
+  row(`notifications      ${s.notifications}`);
 }
 
 export async function runSettings(args: string[]): Promise<number> {

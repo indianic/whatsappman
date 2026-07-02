@@ -1,5 +1,6 @@
 import { readScheduled, addScheduled, updateScheduled } from '../config/scheduled.js';
 import { appendSent } from '../audit.js';
+import { notify } from './notify.js';
 import type { SessionManager } from './session-manager.js';
 import type { ScheduledEntry } from '../config/schema.js';
 
@@ -87,6 +88,7 @@ export class Scheduler {
         via: 'schedule',
         error,
       });
+      notify('WhatsApp scheduled send failed', `${entry.toName}: ${error}`);
       return;
     }
 
@@ -103,6 +105,7 @@ export class Scheduler {
         status: 'sent',
         via: 'schedule',
       });
+      notify('WhatsApp scheduled message sent', `to ${entry.toName} · ${entry.kind}`);
     } catch (err) {
       const error = String((err as Error)?.message ?? err);
       updateScheduled(id, { status: 'failed', error });
@@ -117,6 +120,7 @@ export class Scheduler {
         via: 'schedule',
         error,
       });
+      notify('WhatsApp scheduled send failed', `${entry.toName}: ${error}`);
     }
   }
 

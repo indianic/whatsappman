@@ -64,8 +64,8 @@ what the OS startup job invokes; it's not something you normally type (use
 
 | Command | Purpose |
 |---|---|
-| `whatsappman settings get` | Print current global settings (`draftTtlMinutes`, `defaultDelayMs`, `maxBulkRecipients`, `alwaysConfirm`). |
-| `whatsappman settings set <key> <value>` | Update one setting. `defaultDelayMs` / `maxBulkRecipients` throttle bulk sends to reduce ban risk. |
+| `whatsappman settings get` | Print current global settings (`draftTtlMinutes`, `defaultDelayMs`, `maxBulkRecipients`, `alwaysConfirm`, `notifications`). |
+| `whatsappman settings set <key> <value>` | Update one setting. `defaultDelayMs` / `maxBulkRecipients` throttle bulk sends to reduce ban risk. `notifications false` turns off desktop notifications (default on; see the README's *Desktop notifications* section, incl. the macOS Script Editor permission caveat). Also overridable per-process with `WHATSAPPMAN_NOTIFICATIONS=0`. |
 | `whatsappman update` (alias `upgrade`) | Self-update: checks `npm.indianic.in` for a newer `@indianic/whatsappman` and updates the global install in place (no-op with a clear message when already current). |
 | `whatsappman reset` | Wipes `~/.whatsappman/` (all sessions, creds, logs, scheduled queue) **and** uninstalls the daemon startup job, for a clean re-setup. Destructive — requires explicit `--yes`, no default-confirm bypass. |
 | `whatsappman help [command]` | The command list (same as `--help`), or one command's summary. |

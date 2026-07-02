@@ -128,6 +128,45 @@ silently failing** — you never get a false "sent." That's the honest
 guarantee: *100% reliable feedback, ~99% availability while your machine is
 awake and online.*
 
+## Desktop notifications
+
+Because the daemon runs in the background, whatsappman fires an **OS desktop
+notification** for the events you'd otherwise miss — **default-on**:
+
+- a linked number drops to `needs_relink` (you were logged out → a send will
+  fail until you re-scan a QR);
+- a **scheduled** send fires (sent ✓ or failed ✗).
+
+They're **best-effort**: whatsappman never depends on a notification being
+delivered, and if the OS mechanism is missing or not permitted it **silently
+no-ops** — it never blocks or fails a send.
+
+| OS | Mechanism | Needs |
+|---|---|---|
+| **macOS** | `osascript -e 'display notification …'` | notifications allowed for **Script Editor** — see the caveat below |
+| **Linux / BSD** | `notify-send` (libnotify) | `libnotify` installed + a notification daemon running (a desktop session; headless servers have none → no-op) |
+| **Windows** | PowerShell WinRT toast | PowerShell (built in); toasts enabled for the session |
+
+**Disable them** any time:
+
+```bash
+whatsappman settings set notifications false     # persistent
+# or, per-process:
+WHATSAPPMAN_NOTIFICATIONS=0 whatsappman start
+```
+
+### ⚠️ macOS caveat — "notifications don't show up"
+
+On macOS, whatsappman fires notifications via `osascript`, and macOS attributes
+them to the **Script Editor** app, *not* to whatsappman. If Script Editor's
+notifications are turned off, the call still succeeds but **nothing appears** —
+a silent no-op that looks like a bug. To enable them:
+
+> **System Settings → Notifications → Script Editor → Allow Notifications (on)**
+
+This is almost always the fix when macOS notifications seem broken — it's a
+one-time permission toggle, not a whatsappman problem.
+
 ## A word of caution
 
 Baileys is an unofficial reverse-engineering of WhatsApp Web. It's well-suited

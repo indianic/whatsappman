@@ -18,7 +18,13 @@ on that OS.
 | **IPC transport** | Unix domain socket | named pipe (`\\.\pipe\whatsappman`) | Unix domain socket | Unix domain socket |
 | **Daemon auto-start** | launchd | Task Scheduler | systemd `--user` unit | OpenRC service, or `nohup`+pidfile fallback |
 | **Cred encryption (optional, keytar)** | Keychain | Credential Vault | libsecret / gnome-keyring | often unavailable → documented fallback |
+| **Desktop notifications (default-on, best-effort)** | `osascript` (shows as **Script Editor** — permission caveat) | PowerShell WinRT toast | `notify-send` (needs libnotify + a desktop session) | none on headless → silent no-op |
 | **Verified on real hardware** | pending | pending | pending | pending |
+
+Notifications never block or fail a send — a missing mechanism or denied
+permission silently no-ops. See the README's *Desktop notifications* section
+for the mechanism details, how to disable, and the **macOS Script Editor**
+permission caveat (System Settings → Notifications → Script Editor).
 
 Everything is "coded / pending verification" — nothing has been built or run
 yet (planning stage). Verification badges get filled in as each OS is tested.

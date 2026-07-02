@@ -138,6 +138,20 @@ promise — see the rationale on each).
 - [ ] **Opt-in OS sandbox** (macOS codesign/notarize + App Sandbox; Linux seccomp/AppArmor) — the only thing that truly isolates the daemon from *same-user* code; documented as advanced opt-in, not default.
 - [ ] Doc note to exclude `~/.whatsappman` from iCloud/Time Machine/Dropbox/OneDrive — in SECURITY.md; surface in README too on the final docs pass.
 
+## Post-launch addition — Desktop notifications ✅ DONE
+
+Default-on OS notifications for the events a background daemon would otherwise
+hide. Best-effort: a missing mechanism / denied permission silently no-ops,
+never blocking a send.
+
+- [x] `src/daemon/notify.ts` — `notificationsEnabled()` (settings `notifications` default true + `WHATSAPPMAN_NOTIFICATIONS` env override), `buildNotifyCommand()` pure per-OS (macOS `osascript`, Linux/BSD `notify-send`, Windows PowerShell WinRT toast; per-platform quote escaping), `notify()` best-effort `execFile` (never throws/blocks)
+- [x] Wired: session → `needs_relink` (actionable: re-scan a QR); scheduler fire → sent ✓ / failed ✗
+- [x] `notifications` setting (schema + `update_settings` + `settings get/set` CLI, in `BOOL_KEYS`)
+- [x] Unit tests (6): per-OS command shape + escaping (AppleScript `"`/`\`, PowerShell `'`), `notificationsEnabled` env/settings precedence
+- [x] Docs: README *Desktop notifications* section (default-on, per-OS mechanism table, how to disable, best-effort/no-op, **macOS Script Editor caveat → System Settings → Notifications → Script Editor**); CROSS-OS matrix row; CLI settings note
+- [x] Verified on macOS: `osascript` command well-formed, `notify()` runs without throwing, setting toggles + persists
+- [ ] **Manual sign-off**: confirm a banner actually appears on macOS (with Script Editor allowed), Linux (`notify-send`), Windows (toast) — needs those desktops
+
 ## Pending, deliberately not automatic
 
 - [ ] **`npm publish` to `npm.indianic.in`** — a real, hard-to-reverse action; done **only after explicit confirmation**, matching mailman's stance.

@@ -131,6 +131,7 @@ const updateSettingsParams = z.object({
   defaultDelayMs: z.number().int().min(0).optional(),
   maxBulkRecipients: z.number().int().positive().optional(),
   alwaysConfirm: z.boolean().optional(),
+  notifications: z.boolean().optional(),
 });
 export type UpdateSettingsParams = z.infer<typeof updateSettingsParams>;
 

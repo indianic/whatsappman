@@ -28,6 +28,7 @@ import {
 } from './contact-service.js';
 import { validateBulk } from './bulk.js';
 import { RateLimiter } from './rate-limit.js';
+import { notify } from './notify.js';
 import type { SessionStatus, SessionMeta } from '../config/schema.js';
 import type { SessionSummary } from '../status.js';
 
@@ -219,6 +220,11 @@ export class SessionManager {
           s.status = 'needs_relink';
           s.socket = null;
           this.patchMeta(label, { status: 'needs_relink' });
+          // Actionable: the user must re-scan a QR before any send will work.
+          notify(
+            'WhatsApp needs relinking',
+            `Number "${label}" was logged out — run: whatsappman relink ${label}`,
+          );
         } else {
           s.status = 'disconnected';
           this.patchMeta(label, { status: 'disconnected' });
