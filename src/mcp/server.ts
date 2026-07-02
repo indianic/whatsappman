@@ -114,6 +114,12 @@ const TOOLS: Record<string, ToolDef> = {
     inputSchema: obj({ scheduledId: str('the id returned by schedule_send') }, ['scheduledId']),
     method: 'cancel_scheduled',
   },
+  list_recent: {
+    description:
+      'Recent send history (metadata only — no message bodies): timestamp, session, recipient, kind, message id, status. Optionally filter by session.',
+    inputSchema: obj({ limit: num('max entries (default 20)'), from: str('session label filter') }),
+    method: 'list_recent',
+  },
 };
 
 export async function runMcpServer(): Promise<void> {

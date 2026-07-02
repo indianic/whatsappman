@@ -7,6 +7,9 @@ import { runReconnect, runDisconnect, runDelete, runStatusOne } from './sessions
 import { runInit } from './init.js';
 import { runDoctor } from './doctor.js';
 import { runRegister } from './register.js';
+import { runSettings } from './settings.js';
+import { runRecent } from './recent.js';
+import { runReset } from './reset.js';
 import { install as osInstall, uninstall as osUninstall, planInstall } from '../daemon/install.js';
 import { request } from '../ipc/client.js';
 import { offlineStatus, diskSessionSummaries, type StatusReport } from '../status.js';
@@ -33,6 +36,9 @@ const COMMANDS = [
   'send',
   'send-bulk',
   'scheduled',
+  'recent',
+  'settings',
+  'reset',
   'help',
   'examples',
   'version',
@@ -216,6 +222,10 @@ function printHelp(): void {
   section('scheduled');
   row('scheduled            list scheduled sends');
   row('scheduled cancel <id>  cancel a pending scheduled send');
+  section('history & settings');
+  row('recent [--limit N] [--from label]   recent send history');
+  row('settings get | set <key> <value>    view/change settings');
+  row('reset [--yes]        wipe everything for a clean re-setup');
   section('general');
   row('help             this list');
   row('examples         setup + usage examples');
@@ -261,6 +271,18 @@ export async function cliMain(args: string[]): Promise<number> {
 
     case 'scheduled':
       return runScheduled(args);
+
+    case 'recent': {
+      const limit = takeFlag(args, '--limit');
+      const from = takeFlag(args, '--from');
+      return runRecent(limit != null ? Number(limit) : 20, from);
+    }
+
+    case 'settings':
+      return runSettings(args);
+
+    case 'reset':
+      return runReset(hasFlag(args, '--yes'));
 
     case 'status':
       if (args[1]) return runStatusOne(args[1]);

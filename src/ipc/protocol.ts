@@ -34,6 +34,9 @@ export const METHODS = [
   'schedule_send',
   'list_scheduled',
   'cancel_scheduled',
+  'list_recent',
+  'get_settings',
+  'update_settings',
 ] as const;
 export type Method = (typeof METHODS)[number];
 
@@ -117,6 +120,20 @@ const listScheduledParams = z
   .or(z.undefined());
 const cancelScheduledParams = z.object({ scheduledId: z.string().min(1) });
 
+const listRecentParams = z
+  .object({ limit: z.number().int().positive().max(500).optional(), from: z.string().min(1).optional() })
+  .or(z.undefined());
+export type ListRecentParams = z.infer<typeof listRecentParams>;
+
+/** Only the user-tunable settings keys (schemaVersion is not settable). */
+const updateSettingsParams = z.object({
+  draftTtlMinutes: z.number().int().positive().optional(),
+  defaultDelayMs: z.number().int().min(0).optional(),
+  maxBulkRecipients: z.number().int().positive().optional(),
+  alwaysConfirm: z.boolean().optional(),
+});
+export type UpdateSettingsParams = z.infer<typeof updateSettingsParams>;
+
 /** Per-method params schemas. */
 export const paramsSchemas: Record<Method, z.ZodType> = {
   ping: noParams,
@@ -140,4 +157,7 @@ export const paramsSchemas: Record<Method, z.ZodType> = {
   schedule_send: scheduleSendParams,
   list_scheduled: listScheduledParams,
   cancel_scheduled: cancelScheduledParams,
+  list_recent: listRecentParams,
+  get_settings: noParams,
+  update_settings: updateSettingsParams,
 };

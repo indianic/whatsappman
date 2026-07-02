@@ -97,14 +97,17 @@ items lifted/adapted from the `@mcphub/plugin-baileys-whatsapp` plugin's
 - [x] Verified end-to-end (no phone needed): seeded a past-due + a future entry, started the daemon → past-due fired → health check (no session) → `failed` + logged to `sent.jsonl` with reason; future stayed `pending`; `status` shows the count; **after a restart the pending entry survived** (re-armed from disk)
 - [ ] **Manual sign-off (needs a connected number)**: schedule a real send a few minutes out, restart the daemon before it fires, confirm it actually delivers.
 
-## Phase 7 — History, settings, polish
+## Phase 7 — History, settings, polish ✅ MOSTLY DONE
 
-- [ ] `src/audit.ts` — append-only `sent.jsonl` (timestamp, session, recipient JID, kind, messageId), size-capped/rotated
-- [ ] `list_recent` tool + `whatsappman recent`
-- [ ] `src/logging.ts` — `pino`, redact bodies/creds by default
-- [ ] `settings get`/`set`, `whatsappman send` quick terminal send, `update`/`upgrade` self-update, `reset` (`--yes`)
-- [ ] `register` multi-tool MCP-config writer (Claude/Cursor/Gemini/Windsurf/Codex) **[reuse: mailman]**
-- [ ] README / CONTEXT / docs finalized against the shipped surface
+- [x] `src/audit.ts` — append-only `sent.jsonl` (timestamp, session, recipient JID, kind, messageId, status, via), rotates to `.jsonl.1` at 5 MB
+- [x] `list_recent` MCP tool + `whatsappman recent [--limit N] [--from label]` (reads the file directly when the daemon is down)
+- [x] `src/logging.ts` — `pino` with credential/body redaction (`text`/`body`/`caption`/`creds`/`token`/`auth`)
+- [x] `settings get`/`set <key> <value>` (validated + coerced; `get_settings`/`update_settings` IPC — CLI-only, not MCP), `whatsappman send` quick terminal send (Phase 2/4), `reset` (`--yes`: stop daemon → uninstall autostart → wipe config dir)
+- [x] Unit tests (38 total): `sent.jsonl` rotation, `readRecent` newest-first + limit + `from` filter + corrupt-line skip
+- [x] Verified: settings round-trip to disk (with `schemaVersion`), reset wipes cleanly, MCP surface now 12 tools (list_recent added), still **no raw send**
+- [~] `update`/`upgrade` self-update — deferred (needs the published package on npm.indianic.in to test against)
+- [~] `register` multi-tool config writer (Cursor/Gemini/Windsurf/Codex) — currently prints the snippet + `--write` does Claude Code; full multi-tool writer deferred
+- [ ] README / CONTEXT / docs final pass against the shipped surface — pending
 
 ## Phase 8 — Security hardening & cross-OS (see [SECURITY.md](SECURITY.md))
 

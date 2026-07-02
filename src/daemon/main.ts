@@ -14,13 +14,16 @@ import { Scheduler } from './scheduler.js';
 import { resolveAttachment } from './attachments.js';
 import { normalizeLabel, listSessionLabels } from '../config/sessions.js';
 import { WhatsAppManError, ErrorCode } from '../errors.js';
-import { appendSent } from '../audit.js';
+import { appendSent, readRecent } from '../audit.js';
+import { readSettings, writeSettings } from '../config/state.js';
 import type {
   Method,
   SendTextParams,
   SendBulkParams,
   DraftMessageParams,
   ScheduleSendParams,
+  ListRecentParams,
+  UpdateSettingsParams,
 } from '../ipc/protocol.js';
 import type { State, ScheduledEntry } from '../config/schema.js';
 
@@ -306,6 +309,23 @@ export async function runDaemon(): Promise<void> {
           throw new WhatsAppManError(ErrorCode.SCHEDULED_NOT_FOUND, `no pending scheduled send ${scheduledId}`);
         }
         return { cancelled: true };
+      },
+    ],
+    [
+      'list_recent',
+      (params) => {
+        const p = (params as ListRecentParams) ?? {};
+        return { sent: readRecent(p.limit ?? 20, p.from) };
+      },
+    ],
+    ['get_settings', () => readSettings()],
+    [
+      'update_settings',
+      (params) => {
+        const patch = params as UpdateSettingsParams;
+        const next = { ...readSettings(), ...patch };
+        writeSettings(next);
+        return next;
       },
     ],
     [
