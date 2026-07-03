@@ -39,6 +39,7 @@ deploy_production:
       # --- generate site/.env from CI variables (dynamic; no secrets in repo) ---
       cat > .env <<EOF
       NODE_ENV=production
+      APP_VERSION=${CI_COMMIT_SHORT_SHA}
       SERVER_PORT=${PORT}
       PGHOST=${PGHOST:-127.0.0.1}
       PGPORT=${PGPORT:-5433}
