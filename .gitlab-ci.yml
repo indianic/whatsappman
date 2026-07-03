@@ -69,6 +69,11 @@ deploy_production:
       source "\$HOME/.nvm/nvm.sh" 2>/dev/null || true
       export PATH="\$HOME/.nvm/versions/node/\$(ls \$HOME/.nvm/versions/node/ 2>/dev/null | sort -V | tail -1)/bin:\$HOME/bin:\$HOME/.local/bin:/usr/local/bin:\$PATH"
       command -v pm2 >/dev/null || npm install -g pm2
+      # CRITICAL: this host has logind KillUserProcesses=yes, which reaps ALL of
+      # this user's processes (incl. the PM2 daemon) when the job's login session
+      # closes — UNLESS the user has linger. Enabling linger is the real fix.
+      loginctl enable-linger 2>&1 | head -1 || echo "linger self-enable failed — ask ops: sudo loginctl enable-linger \$(id -un)"
+      echo "linger status: \$(loginctl show-user \$(id -un) -p Linger 2>/dev/null || echo unknown)"
       echo "===== PRE-DEPLOY STATE (why is it down?) ====="
       pm2 list 2>&1 || echo "pm2 daemon NOT running"
       pm2 describe "$APP_NAME" 2>&1 | grep -iE "status|restarts|uptime|unstable|script|exec cwd|error log|out log" || echo "no pm2 entry for $APP_NAME"
