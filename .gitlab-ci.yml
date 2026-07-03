@@ -76,6 +76,13 @@ deploy_production:
       APP_NAME="$APP_NAME" pm2 start ecosystem.config.cjs
       pm2 save
       echo "Deployed $APP_NAME on 127.0.0.1:${PORT} (cwd $(pwd))"
+      # --- post-start diagnostics ---
+      sleep 4
+      pm2 list || true
+      echo "--- local health probe ---"
+      curl -sS -m 6 "http://127.0.0.1:${PORT}/api/health" && echo "" || echo "LOCAL_HEALTH_FAILED"
+      echo "--- recent app logs ---"
+      pm2 logs "$APP_NAME" --lines 40 --nostream || true
   retry:
     max: 2
     when:
