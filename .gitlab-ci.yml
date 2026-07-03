@@ -69,6 +69,14 @@ deploy_production:
       source "\$HOME/.nvm/nvm.sh" 2>/dev/null || true
       export PATH="\$HOME/.nvm/versions/node/\$(ls \$HOME/.nvm/versions/node/ 2>/dev/null | sort -V | tail -1)/bin:\$HOME/bin:\$HOME/.local/bin:/usr/local/bin:\$PATH"
       command -v pm2 >/dev/null || npm install -g pm2
+      echo "===== PRE-DEPLOY STATE (why is it down?) ====="
+      pm2 list 2>&1 || echo "pm2 daemon NOT running"
+      pm2 describe "$APP_NAME" 2>&1 | grep -iE "status|restarts|uptime|unstable|script|exec cwd|error log|out log" || echo "no pm2 entry for $APP_NAME"
+      echo "--- listeners on ${PORT} ---"; (ss -ltnp 2>/dev/null || netstat -ltnp 2>/dev/null) | grep ":${PORT}" || echo "NOTHING listening on ${PORT}"
+      echo "--- node/pm2 processes ---"; ps -eo pid,ppid,etimes,rss,cmd 2>/dev/null | grep -iE "PM2 v|God Daemon|server/index|whatsappman" | grep -v grep || echo "no node/pm2 processes"
+      echo "--- pm2 error log tail ---"; tail -n 50 \$HOME/.pm2/logs/${APP_NAME}-error*.log 2>/dev/null || echo "no error log"
+      echo "--- pm2 daemon uptime / who ---"; ls -la \$HOME/.pm2/pm2.log 2>/dev/null; uptime 2>/dev/null || true
+      echo "===== END PRE-DEPLOY STATE ====="
       cd "$STABLE"
       npm install --no-audit --no-fund
       npm run build
