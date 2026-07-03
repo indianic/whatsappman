@@ -1,14 +1,13 @@
 # WhatsAppMan site — CI/CD.
 #
-# Runs on the server7 SHELL runner (executes directly on the server), so no SSH
-# hop / deploy key is needed. Strategy: check out the whole repo, then build and
-# run ONLY the `site/` subfolder under PM2 on $SERVER_PORT. ISPConfig reverse-
-# proxies whatsappman.indianic.dev → 127.0.0.1:$SERVER_PORT.
+# Runs on the server7 shell runner. To keep PM2 alive after the job ends (the
+# runner reaps job-spawned processes — even setsid'd ones), the actual start
+# happens inside an `ssh localhost` session: sshd-spawned processes reparent to
+# init and live outside the runner's job cgroup. The app is deployed to a STABLE
+# dir ($HOME/apps/whatsappman-site), not the ephemeral CI build dir.
 #
-# Runtime config (.env) is generated each run from GitLab CI/CD variables, so
-# nothing secret lives in the repo. Secrets set as masked CI variables:
-#   SENDGRID_API_KEY, PGPASSWORD
-# Others fall back to sensible defaults but can be overridden via CI variables.
+# Runtime config (.env) is generated from GitLab CI/CD variables each run.
+# Secrets (masked CI vars): SENDGRID_API_KEY, PGPASSWORD.
 
 stages:
   - deploy
@@ -25,19 +24,19 @@ deploy_production:
   script:
     - |
       set -e
-      # --- node/pm2 on PATH (nvm) ---
-      source "$HOME/.nvm/nvm.sh" 2>/dev/null || true
-      export PATH="$HOME/.nvm/versions/node/$(ls "$HOME/.nvm/versions/node/" 2>/dev/null | sort -V | tail -1)/bin:$HOME/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
-      command -v node >/dev/null || { echo "ERROR: node not found on runner"; exit 1; }
-      command -v pm2  >/dev/null || npm install -g pm2
-
       APP_NAME="${APP_NAME:-whatsappman-site}"
       PORT="${SERVER_PORT:-50121}"
+      STABLE="$HOME/apps/whatsappman-site"
+      mkdir -p "$STABLE"
 
-      cd site
+      # 1) sync source into the stable dir (keep node_modules/.env across deploys)
+      rsync -a --delete \
+        --exclude='.git' --exclude='node_modules' --exclude='client/node_modules' \
+        --exclude='client/dist' --exclude='.env' \
+        ./site/ "$STABLE/"
 
-      # --- generate site/.env from CI variables (dynamic; no secrets in repo) ---
-      cat > .env <<EOF
+      # 2) generate .env from CI variables (dynamic; no secrets in the repo)
+      cat > "$STABLE/.env" <<EOF
       NODE_ENV=production
       APP_VERSION=${CI_COMMIT_SHORT_SHA}
       SERVER_PORT=${PORT}
@@ -64,31 +63,35 @@ deploy_production:
       VITE_CONTACT_EMAIL=${MAIL_LEADS_INBOX:-hello@whatsappman.indianic.dev}
       EOF
 
-      # --- install + build (server deps, then client build) ---
+      # 3) remote deploy script — runs build + PM2 inside the ssh session
+      cat > "$STABLE/.deploy-remote.sh" <<REMOTE
+      set -e
+      source "\$HOME/.nvm/nvm.sh" 2>/dev/null || true
+      export PATH="\$HOME/.nvm/versions/node/\$(ls \$HOME/.nvm/versions/node/ 2>/dev/null | sort -V | tail -1)/bin:\$HOME/bin:\$HOME/.local/bin:/usr/local/bin:\$PATH"
+      command -v pm2 >/dev/null || npm install -g pm2
+      cd "$STABLE"
       npm install --no-audit --no-fund
       npm run build
-
-      # --- database: create schema + seed templates (both idempotent) ---
       npm run migrate
       npm run seed
-
-      # --- (re)start under PM2 on $PORT ---
-      # Start the PM2 daemon in its OWN session so GitLab's job cleanup can't
-      # reap it when the job ends (shell-runner processes are killed on exit).
-      setsid pm2 ping >/dev/null 2>&1 || true
       pm2 delete "$APP_NAME" 2>/dev/null || true
-      APP_NAME="$APP_NAME" setsid pm2 start ecosystem.config.cjs
+      APP_NAME="$APP_NAME" pm2 start ecosystem.config.cjs
       pm2 save
-      # Detach the daemon from the runner's process group as a belt-and-braces guard.
-      ( pm2 status >/dev/null 2>&1 & ) || true
-      echo "Deployed $APP_NAME on 127.0.0.1:${PORT} (cwd $(pwd))"
-      # --- post-start diagnostics ---
-      sleep 4
-      pm2 list || true
-      echo "--- local health probe ---"
+      sleep 3
+      pm2 list
+      echo "--- local health ---"
       curl -sS -m 6 "http://127.0.0.1:${PORT}/api/health" && echo "" || echo "LOCAL_HEALTH_FAILED"
-      echo "--- recent app logs ---"
-      pm2 logs "$APP_NAME" --lines 40 --nostream || true
+      REMOTE
+
+      # 4) ensure the runner user can ssh to localhost (own key)
+      mkdir -p ~/.ssh && chmod 700 ~/.ssh
+      [ -f ~/.ssh/id_ed25519 ] || ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519 -q
+      grep -qF "$(cat ~/.ssh/id_ed25519.pub)" ~/.ssh/authorized_keys 2>/dev/null || cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys
+      chmod 600 ~/.ssh/authorized_keys
+
+      # 5) start PM2 via ssh so it survives the job (sshd session → init, not runner cgroup)
+      ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes localhost "bash '$STABLE/.deploy-remote.sh'"
+      echo "Deployed $APP_NAME via ssh-localhost from $STABLE (PM2 detached from runner)."
   retry:
     max: 2
     when:
