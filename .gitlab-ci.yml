@@ -25,18 +25,25 @@ deploy_production:
   script:
     - |
       set -e
-      command -v sshpass >/dev/null || { echo "ERROR: sshpass not available on runner"; exit 1; }
       SHELL_USER=whatsappman
       REMOTE=127.0.0.1
       PORT="${SERVER_PORT:-50121}"
       SSHOPT="-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$HOME/.ssh/known_hosts"
 
-      # 1) bootstrap the runner's SSH key into the shell user (idempotent)
+      # 1) bootstrap the runner's SSH key into the shell user (idempotent).
+      # No sshpass on the runner → feed the password via OpenSSH's SSH_ASKPASS.
       mkdir -p ~/.ssh && chmod 700 ~/.ssh
       [ -f ~/.ssh/id_ed25519 ] || ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519 -q
       PUB="$(cat ~/.ssh/id_ed25519.pub)"
-      sshpass -p "$SHELL_PW" ssh $SSHOPT "$SHELL_USER@$REMOTE" \
-        "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && grep -qF '$PUB' ~/.ssh/authorized_keys || echo '$PUB' >> ~/.ssh/authorized_keys"
+      if ! ssh $SSHOPT -o BatchMode=yes -o ConnectTimeout=8 "$SHELL_USER@$REMOTE" true 2>/dev/null; then
+        ASK="$(mktemp)"
+        printf '#!/bin/sh\necho "$SHELL_PW"\n' > "$ASK"; chmod +x "$ASK"
+        export SHELL_PW
+        SSH_ASKPASS="$ASK" SSH_ASKPASS_REQUIRE=force DISPLAY=nodisplay:0 setsid -w ssh $SSHOPT \
+          "$SHELL_USER@$REMOTE" \
+          "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && grep -qF '$PUB' ~/.ssh/authorized_keys || echo '$PUB' >> ~/.ssh/authorized_keys"
+        rm -f "$ASK"
+      fi
 
       # 2) generate .env from CI/CD variables (job context has them)
       cat > deploy.env <<EOF
