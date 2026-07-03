@@ -1,0 +1,71 @@
+# WhatsAppMan site — CI/CD (subfolder deploy).
+#
+# The app lives in the `site/` subfolder of this repo (the repo root holds the
+# @indianic/whatsappman product). This pipeline SSHes to the server, updates the
+# checkout, then builds + (re)starts ONLY the site under PM2. Based on SSH
+# Manager's "Node.js Express Deploy (PM2)" template, adapted for the subfolder.
+#
+# Per-environment CI/CD variables (created by SSH Manager, drop-in compatible):
+#   SERVER_ACCESS  base64-encoded private SSH key for the deploy user
+#   SERVER_IP      server IP / host
+#   SERVER_USER    shell user
+#   DEPLOY_PATH    absolute path of the git checkout on the server (repo root)
+#   APP_NAME       PM2 process name
+# The app's own runtime config (port, DB, SendGrid) lives in site/.env on the
+# server and is preserved across deploys (git reset --hard never touches it).
+
+stages:
+  - deploy
+
+variables:
+  GIT_STRATEGY: none
+
+deploy_production:
+  stage: deploy
+  tags:
+    - node
+    - server7
+  interruptible: true
+  resource_group: deploy-whatsappman-site
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  before_script:
+    - |
+      command -v ssh-agent >/dev/null || ( apt-get update -qq && apt-get install -qq openssh-client )
+      eval $(ssh-agent -s)
+      echo "$SERVER_ACCESS" | base64 --decode > /tmp/ssh_key
+      chmod 600 /tmp/ssh_key
+      ssh-add /tmp/ssh_key
+      mkdir -p ~/.ssh
+      printf 'Host remote-server\n  HostName %s\n  StrictHostKeyChecking accept-new\n  User %s\n  UserKnownHostsFile ~/.ssh/known_hosts\n' "$SERVER_IP" "$SERVER_USER" > ~/.ssh/config
+  script:
+    - |
+      DEPLOY_DIR="$DEPLOY_PATH"
+      BRANCH="${CI_COMMIT_BRANCH:-$CI_COMMIT_REF_NAME}"
+      APP_NAME="${APP_NAME:-whatsappman-site}"
+      ssh remote-server "
+        set -e
+        source \$HOME/.nvm/nvm.sh 2>/dev/null || true
+        export PATH=\$HOME/.nvm/versions/node/\$(ls \$HOME/.nvm/versions/node/ 2>/dev/null | sort -V | tail -1)/bin:\$HOME/bin:\$HOME/.local/bin:/usr/local/bin:\$PATH
+        command -v node >/dev/null || { echo ERROR_NODE_NOT_FOUND; exit 1; }
+        command -v pm2 >/dev/null || npm install -g pm2
+        if [ ! -d '$DEPLOY_DIR/.git' ]; then echo 'FIRST_SETUP_IN_PROGRESS — repo not cloned yet'; exit 0; fi
+        cd '$DEPLOY_DIR'
+        git fetch origin '$BRANCH'
+        git reset --hard origin/'$BRANCH'   # .env / node_modules are untracked and preserved
+        cd site
+        if [ ! -f .env ]; then echo 'ERROR: site/.env missing on server — create it first'; exit 1; fi
+        npm install --no-audit --no-fund
+        npm run build
+        pm2 delete '$APP_NAME' 2>/dev/null || true
+        APP_NAME='$APP_NAME' pm2 start ecosystem.config.cjs
+        pm2 save
+      "
+      echo "Deployed $APP_NAME → $DEPLOY_DIR/site on $SERVER_IP"
+  after_script:
+    - rm -f ~/.ssh/config ~/.ssh/known_hosts /tmp/ssh_key
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
