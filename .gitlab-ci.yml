@@ -37,11 +37,13 @@ deploy_production:
       PUB="$(cat ~/.ssh/id_ed25519.pub)"
       if ! ssh $SSHOPT -o BatchMode=yes -o ConnectTimeout=8 "$SHELL_USER@$REMOTE" true 2>/dev/null; then
         ASK="$(mktemp)"
-        printf '#!/bin/sh\necho "$SHELL_PW"\n' > "$ASK"; chmod +x "$ASK"
-        export SHELL_PW
-        SSH_ASKPASS="$ASK" SSH_ASKPASS_REQUIRE=force DISPLAY=nodisplay:0 setsid -w ssh $SSHOPT \
+        # bake the password literally into the helper (no env-inheritance guesswork)
+        printf '#!/bin/sh\nprintf %%s %s\n' "$SHELL_PW" > "$ASK"; chmod +x "$ASK"
+        setsid -w env SSH_ASKPASS="$ASK" SSH_ASKPASS_REQUIRE=force DISPLAY=none \
+          ssh $SSHOPT -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1 \
           "$SHELL_USER@$REMOTE" \
-          "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && grep -qF '$PUB' ~/.ssh/authorized_keys || echo '$PUB' >> ~/.ssh/authorized_keys"
+          "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && grep -qF '$PUB' ~/.ssh/authorized_keys || echo '$PUB' >> ~/.ssh/authorized_keys" \
+          || { echo "BOOTSTRAP_SSH_FAILED — shell password likely wrong"; exit 1; }
         rm -f "$ASK"
       fi
 
