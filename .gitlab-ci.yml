@@ -1,14 +1,11 @@
 # WhatsAppMan site — CI/CD.
 #
-# Runs on the server7 shell runner (as gitlab-runner) but DEPLOYS + runs PM2 as
-# the ISPConfig shell user `whatsappman` — the same pattern as every persistent
-# app on this host (mailman, phase4, …). Processes owned by gitlab-runner get
-# reaped by logind KillUserProcesses; the web shell user (with linger) survives.
+# Deploys the /site subfolder to server7 and runs it under PM2 AS the ISPConfig
+# shell user (web274), which has systemd linger — so it persists (the mailman
+# pattern). The runner SSHes in with a key (SERVER_ACCESS); no password.
 #
-# Flow: bootstrap the runner's key into the shell user (via SHELL_PW once) →
-# rsync site/ over ssh → build + migrate + seed + PM2 as the shell user.
-# .env is generated from CI/CD variables. Masked CI vars: SENDGRID_API_KEY,
-# PGPASSWORD, SHELL_PW.
+# CI/CD variables: SERVER_ACCESS (base64 private key), SERVER_IP, SERVER_USER,
+# PG*, SENDGRID_API_KEY, SERVER_PORT, SITE_DOMAIN. .env is generated each run.
 
 stages:
   - deploy
@@ -25,33 +22,15 @@ deploy_production:
   script:
     - |
       set -e
-      SHELL_USER=whatsappman
-      REMOTE=127.0.0.1
-      PORT="${SERVER_PORT:-50121}"
-      SSHOPT="-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$HOME/.ssh/known_hosts"
+      KEY="$(mktemp)"; echo "$SERVER_ACCESS" | base64 -d > "$KEY"; chmod 600 "$KEY"
+      SSHO="-i $KEY -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=20"
+      H="$SERVER_USER@$SERVER_IP"
 
-      # 1) bootstrap the runner's SSH key into the shell user (idempotent).
-      # No sshpass on the runner → feed the password via OpenSSH's SSH_ASKPASS.
-      mkdir -p ~/.ssh && chmod 700 ~/.ssh
-      [ -f ~/.ssh/id_ed25519 ] || ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519 -q
-      PUB="$(cat ~/.ssh/id_ed25519.pub)"
-      if ! ssh $SSHOPT -o BatchMode=yes -o ConnectTimeout=8 "$SHELL_USER@$REMOTE" true 2>/dev/null; then
-        ASK="$(mktemp)"
-        # bake the password literally into the helper (no env-inheritance guesswork)
-        printf '#!/bin/sh\nprintf %%s %s\n' "$SHELL_PW" > "$ASK"; chmod +x "$ASK"
-        setsid -w env SSH_ASKPASS="$ASK" SSH_ASKPASS_REQUIRE=force DISPLAY=none \
-          ssh $SSHOPT -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1 \
-          "$SHELL_USER@$REMOTE" \
-          "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && grep -qF '$PUB' ~/.ssh/authorized_keys || echo '$PUB' >> ~/.ssh/authorized_keys" \
-          || { echo "BOOTSTRAP_SSH_FAILED — shell password likely wrong"; exit 1; }
-        rm -f "$ASK"
-      fi
-
-      # 2) generate .env from CI/CD variables (job context has them)
+      # .env from CI variables (dynamic; no secrets in the repo)
       cat > deploy.env <<EOF
       NODE_ENV=production
       APP_VERSION=${CI_COMMIT_SHORT_SHA}
-      SERVER_PORT=${PORT}
+      SERVER_PORT=${SERVER_PORT:-50121}
       PGHOST=${PGHOST:-127.0.0.1}
       PGPORT=${PGPORT:-5433}
       PGUSER=${PGUSER:-whatsappman}
@@ -75,35 +54,32 @@ deploy_production:
       VITE_CONTACT_EMAIL=hello@whatsappman.indianic.dev
       EOF
 
-      # 3) sync code + env to the shell user's home (over ssh, key auth now works)
-      ssh $SSHOPT "$SHELL_USER@$REMOTE" "mkdir -p ~/whatsappman-site"
-      rsync -a --delete -e "ssh $SSHOPT" \
-        --exclude=.git --exclude=node_modules --exclude=client/node_modules --exclude=client/dist --exclude=.env \
-        ./site/ "$SHELL_USER@$REMOTE:whatsappman-site/"
-      scp $SSHOPT deploy.env "$SHELL_USER@$REMOTE:whatsappman-site/.env"
+      # ship ONLY the /site subfolder to the shell user's home
+      ssh $SSHO "$H" 'mkdir -p ~/whatsappman-site'
+      tar czf - --exclude=.git --exclude=node_modules --exclude=client/node_modules --exclude=client/dist --exclude=logs --exclude=.env -C site . \
+        | ssh $SSHO "$H" 'tar xzf - -C ~/whatsappman-site'
+      cat deploy.env | ssh $SSHO "$H" 'cat > ~/whatsappman-site/.env'
 
-      # 4) build + run PM2 AS the shell user (survives — linger + web user)
-      ssh $SSHOPT "$SHELL_USER@$REMOTE" bash -s <<'REMOTE_EOF'
+      # build + migrate + seed + (re)start PM2 AS the shell user (persistent)
+      ssh $SSHO "$H" 'bash -s' <<'REMOTE'
       set -e
-      loginctl enable-linger 2>/dev/null || true
-      source "$HOME/.nvm/nvm.sh" 2>/dev/null || true
-      export PATH="$HOME/.nvm/versions/node/$(ls $HOME/.nvm/versions/node/ 2>/dev/null | sort -V | tail -1)/bin:$HOME/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
-      command -v node >/dev/null || { echo "NODE_MISSING on shell user"; exit 1; }
-      command -v pm2 >/dev/null || npm install -g pm2
+      source ~/.nvm/nvm.sh 2>/dev/null || true
+      command -v pm2 >/dev/null || npm install -g pm2 >/dev/null 2>&1
       cd ~/whatsappman-site
-      npm install --no-audit --no-fund
-      npm run build
-      npm run migrate
-      npm run seed
-      pm2 delete whatsappman-site 2>/dev/null || true
-      APP_NAME=whatsappman-site pm2 start ecosystem.config.cjs
-      pm2 save
+      npm install --no-audit --no-fund >/tmp/ni.log 2>&1 || { tail -20 /tmp/ni.log; exit 1; }
+      npm run build >/tmp/nb.log 2>&1 || { tail -25 /tmp/nb.log; exit 1; }
+      npm run migrate 2>&1 | tail -2
+      npm run seed 2>&1 | tail -1
+      pm2 delete whatsappman-site >/dev/null 2>&1 || true
+      APP_NAME=whatsappman-site pm2 start ecosystem.config.cjs 2>&1 | tail -3
+      pm2 save >/dev/null 2>&1
+      loginctl enable-linger 2>/dev/null || true
       sleep 3
-      pm2 list
-      echo "--- local health ---"
-      curl -sS -m 6 http://127.0.0.1:50121/api/health && echo "" || echo "LOCAL_HEALTH_FAILED"
-      REMOTE_EOF
-      echo "Deployed as $SHELL_USER (persistent web user + linger)."
+      pm2 describe whatsappman-site | grep -iE "status|restarts" | head -2
+      curl -sS -m 6 http://127.0.0.1:50121/api/health && echo ""
+      REMOTE
+      rm -f "$KEY"
+      echo "Deployed $APP_NAME as $SERVER_USER (web user + linger, persistent)."
   retry:
     max: 2
     when:
