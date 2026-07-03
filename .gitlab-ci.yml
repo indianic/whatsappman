@@ -1,13 +1,14 @@
 # WhatsAppMan site — CI/CD.
 #
-# Runs on the server7 shell runner. To keep PM2 alive after the job ends (the
-# runner reaps job-spawned processes — even setsid'd ones), the actual start
-# happens inside an `ssh localhost` session: sshd-spawned processes reparent to
-# init and live outside the runner's job cgroup. The app is deployed to a STABLE
-# dir ($HOME/apps/whatsappman-site), not the ephemeral CI build dir.
+# Runs on the server7 shell runner (as gitlab-runner) but DEPLOYS + runs PM2 as
+# the ISPConfig shell user `whatsappman` — the same pattern as every persistent
+# app on this host (mailman, phase4, …). Processes owned by gitlab-runner get
+# reaped by logind KillUserProcesses; the web shell user (with linger) survives.
 #
-# Runtime config (.env) is generated from GitLab CI/CD variables each run.
-# Secrets (masked CI vars): SENDGRID_API_KEY, PGPASSWORD.
+# Flow: bootstrap the runner's key into the shell user (via SHELL_PW once) →
+# rsync site/ over ssh → build + migrate + seed + PM2 as the shell user.
+# .env is generated from CI/CD variables. Masked CI vars: SENDGRID_API_KEY,
+# PGPASSWORD, SHELL_PW.
 
 stages:
   - deploy
@@ -24,19 +25,21 @@ deploy_production:
   script:
     - |
       set -e
-      APP_NAME="${APP_NAME:-whatsappman-site}"
+      command -v sshpass >/dev/null || { echo "ERROR: sshpass not available on runner"; exit 1; }
+      SHELL_USER=whatsappman
+      REMOTE=127.0.0.1
       PORT="${SERVER_PORT:-50121}"
-      STABLE="$HOME/apps/whatsappman-site"
-      mkdir -p "$STABLE"
+      SSHOPT="-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$HOME/.ssh/known_hosts"
 
-      # 1) sync source into the stable dir (keep node_modules/.env across deploys)
-      rsync -a --delete \
-        --exclude='.git' --exclude='node_modules' --exclude='client/node_modules' \
-        --exclude='client/dist' --exclude='.env' \
-        ./site/ "$STABLE/"
+      # 1) bootstrap the runner's SSH key into the shell user (idempotent)
+      mkdir -p ~/.ssh && chmod 700 ~/.ssh
+      [ -f ~/.ssh/id_ed25519 ] || ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519 -q
+      PUB="$(cat ~/.ssh/id_ed25519.pub)"
+      sshpass -p "$SHELL_PW" ssh $SSHOPT "$SHELL_USER@$REMOTE" \
+        "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && grep -qF '$PUB' ~/.ssh/authorized_keys || echo '$PUB' >> ~/.ssh/authorized_keys"
 
-      # 2) generate .env from CI variables (dynamic; no secrets in the repo)
-      cat > "$STABLE/.env" <<EOF
+      # 2) generate .env from CI/CD variables (job context has them)
+      cat > deploy.env <<EOF
       NODE_ENV=production
       APP_VERSION=${CI_COMMIT_SHORT_SHA}
       SERVER_PORT=${PORT}
@@ -46,65 +49,52 @@ deploy_production:
       PGPASSWORD=${PGPASSWORD}
       PGDATABASE=${PGDATABASE:-whatsappman_site}
       SENDGRID_API_KEY=${SENDGRID_API_KEY}
-      MAIL_FROM_EMAIL=${MAIL_FROM_EMAIL:-no-reply@whatsappman.indianic.dev}
-      MAIL_FROM_NAME=${MAIL_FROM_NAME:-WhatsAppMan}
-      MAIL_LEADS_INBOX=${MAIL_LEADS_INBOX:-hello@whatsappman.indianic.dev}
-      SITE_NAME=${SITE_NAME:-WhatsAppMan}
+      MAIL_FROM_EMAIL=no-reply@whatsappman.indianic.dev
+      MAIL_FROM_NAME=WhatsAppMan
+      MAIL_LEADS_INBOX=hello@whatsappman.indianic.dev
+      SITE_NAME=WhatsAppMan
       SITE_DOMAIN=${SITE_DOMAIN:-https://whatsappman.indianic.dev}
-      SITE_TAGLINE=${SITE_TAGLINE:-Send WhatsApp messages from any AI tool — safely.}
-      NPM_PACKAGE=${NPM_PACKAGE:-@indianic/whatsappman}
-      NPM_URL=${NPM_URL:-https://npm.indianic.in/-/web/detail/@indianic/whatsappman}
+      SITE_TAGLINE=Send WhatsApp messages from any AI tool — safely.
+      NPM_PACKAGE=@indianic/whatsappman
+      NPM_URL=https://npm.indianic.in/-/web/detail/@indianic/whatsappman
       VITE_API_BASE=/api
-      VITE_SITE_NAME=${SITE_NAME:-WhatsAppMan}
+      VITE_SITE_NAME=WhatsAppMan
       VITE_SITE_DOMAIN=${SITE_DOMAIN:-https://whatsappman.indianic.dev}
-      VITE_SITE_TAGLINE=${SITE_TAGLINE:-Send WhatsApp messages from any AI tool — safely.}
-      VITE_NPM_PACKAGE=${NPM_PACKAGE:-@indianic/whatsappman}
-      VITE_NPM_URL=${NPM_URL:-https://npm.indianic.in/-/web/detail/@indianic/whatsappman}
-      VITE_CONTACT_EMAIL=${MAIL_LEADS_INBOX:-hello@whatsappman.indianic.dev}
+      VITE_SITE_TAGLINE=Send WhatsApp messages from any AI tool — safely.
+      VITE_NPM_PACKAGE=@indianic/whatsappman
+      VITE_NPM_URL=https://npm.indianic.in/-/web/detail/@indianic/whatsappman
+      VITE_CONTACT_EMAIL=hello@whatsappman.indianic.dev
       EOF
 
-      # 3) remote deploy script — runs build + PM2 inside the ssh session
-      cat > "$STABLE/.deploy-remote.sh" <<REMOTE
+      # 3) sync code + env to the shell user's home (over ssh, key auth now works)
+      ssh $SSHOPT "$SHELL_USER@$REMOTE" "mkdir -p ~/whatsappman-site"
+      rsync -a --delete -e "ssh $SSHOPT" \
+        --exclude=.git --exclude=node_modules --exclude=client/node_modules --exclude=client/dist --exclude=.env \
+        ./site/ "$SHELL_USER@$REMOTE:whatsappman-site/"
+      scp $SSHOPT deploy.env "$SHELL_USER@$REMOTE:whatsappman-site/.env"
+
+      # 4) build + run PM2 AS the shell user (survives — linger + web user)
+      ssh $SSHOPT "$SHELL_USER@$REMOTE" bash -s <<'REMOTE_EOF'
       set -e
-      source "\$HOME/.nvm/nvm.sh" 2>/dev/null || true
-      export PATH="\$HOME/.nvm/versions/node/\$(ls \$HOME/.nvm/versions/node/ 2>/dev/null | sort -V | tail -1)/bin:\$HOME/bin:\$HOME/.local/bin:/usr/local/bin:\$PATH"
+      loginctl enable-linger 2>/dev/null || true
+      source "$HOME/.nvm/nvm.sh" 2>/dev/null || true
+      export PATH="$HOME/.nvm/versions/node/$(ls $HOME/.nvm/versions/node/ 2>/dev/null | sort -V | tail -1)/bin:$HOME/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
+      command -v node >/dev/null || { echo "NODE_MISSING on shell user"; exit 1; }
       command -v pm2 >/dev/null || npm install -g pm2
-      # CRITICAL: this host has logind KillUserProcesses=yes, which reaps ALL of
-      # this user's processes (incl. the PM2 daemon) when the job's login session
-      # closes — UNLESS the user has linger. Enabling linger is the real fix.
-      loginctl enable-linger 2>&1 | head -1 || echo "linger self-enable failed — ask ops: sudo loginctl enable-linger \$(id -un)"
-      echo "linger status: \$(loginctl show-user \$(id -un) -p Linger 2>/dev/null || echo unknown)"
-      echo "===== PRE-DEPLOY STATE (why is it down?) ====="
-      pm2 list 2>&1 || echo "pm2 daemon NOT running"
-      pm2 describe "$APP_NAME" 2>&1 | grep -iE "status|restarts|uptime|unstable|script|exec cwd|error log|out log" || echo "no pm2 entry for $APP_NAME"
-      echo "--- listeners on ${PORT} ---"; (ss -ltnp 2>/dev/null || netstat -ltnp 2>/dev/null) | grep ":${PORT}" || echo "NOTHING listening on ${PORT}"
-      echo "--- node/pm2 processes ---"; ps -eo pid,ppid,etimes,rss,cmd 2>/dev/null | grep -iE "PM2 v|God Daemon|server/index|whatsappman" | grep -v grep || echo "no node/pm2 processes"
-      echo "--- pm2 error log tail ---"; tail -n 50 \$HOME/.pm2/logs/${APP_NAME}-error*.log 2>/dev/null || echo "no error log"
-      echo "--- pm2 daemon uptime / who ---"; ls -la \$HOME/.pm2/pm2.log 2>/dev/null; uptime 2>/dev/null || true
-      echo "===== END PRE-DEPLOY STATE ====="
-      cd "$STABLE"
+      cd ~/whatsappman-site
       npm install --no-audit --no-fund
       npm run build
       npm run migrate
       npm run seed
-      pm2 delete "$APP_NAME" 2>/dev/null || true
-      APP_NAME="$APP_NAME" pm2 start ecosystem.config.cjs
+      pm2 delete whatsappman-site 2>/dev/null || true
+      APP_NAME=whatsappman-site pm2 start ecosystem.config.cjs
       pm2 save
       sleep 3
       pm2 list
       echo "--- local health ---"
-      curl -sS -m 6 "http://127.0.0.1:${PORT}/api/health" && echo "" || echo "LOCAL_HEALTH_FAILED"
-      REMOTE
-
-      # 4) ensure the runner user can ssh to localhost (own key)
-      mkdir -p ~/.ssh && chmod 700 ~/.ssh
-      [ -f ~/.ssh/id_ed25519 ] || ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519 -q
-      grep -qF "$(cat ~/.ssh/id_ed25519.pub)" ~/.ssh/authorized_keys 2>/dev/null || cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys
-      chmod 600 ~/.ssh/authorized_keys
-
-      # 5) start PM2 via ssh so it survives the job (sshd session → init, not runner cgroup)
-      ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes localhost "bash '$STABLE/.deploy-remote.sh'"
-      echo "Deployed $APP_NAME via ssh-localhost from $STABLE (PM2 detached from runner)."
+      curl -sS -m 6 http://127.0.0.1:50121/api/health && echo "" || echo "LOCAL_HEALTH_FAILED"
+      REMOTE_EOF
+      echo "Deployed as $SHELL_USER (persistent web user + linger)."
   retry:
     max: 2
     when:
