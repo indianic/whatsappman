@@ -72,9 +72,14 @@ deploy_production:
       npm run seed
 
       # --- (re)start under PM2 on $PORT ---
+      # Start the PM2 daemon in its OWN session so GitLab's job cleanup can't
+      # reap it when the job ends (shell-runner processes are killed on exit).
+      setsid pm2 ping >/dev/null 2>&1 || true
       pm2 delete "$APP_NAME" 2>/dev/null || true
-      APP_NAME="$APP_NAME" pm2 start ecosystem.config.cjs
+      APP_NAME="$APP_NAME" setsid pm2 start ecosystem.config.cjs
       pm2 save
+      # Detach the daemon from the runner's process group as a belt-and-braces guard.
+      ( pm2 status >/dev/null 2>&1 & ) || true
       echo "Deployed $APP_NAME on 127.0.0.1:${PORT} (cwd $(pwd))"
       # --- post-start diagnostics ---
       sleep 4
