@@ -1,87 +1,10 @@
-# WhatsAppMan site — CI/CD.
+# WhatsAppMan site deploy has MOVED to its own repo:
+#   server7_development/whatsappman-site  (deploys client/+server/ at root)
 #
-# Deploys the /site subfolder to server7 and runs it under PM2 AS the ISPConfig
-# shell user (web274), which has systemd linger — so it persists (the mailman
-# pattern). The runner SSHes in with a key (SERVER_ACCESS); no password.
-#
-# CI/CD variables: SERVER_ACCESS (base64 private key), SERVER_IP, SERVER_USER,
-# PG*, SENDGRID_API_KEY, SERVER_PORT, SITE_DOMAIN. .env is generated each run.
+# This product repo no longer deploys the marketing site. Pipelines here are
+# intentionally disabled so the two repos don't both restart the same PM2 app
+# (whatsappman-site, port 50121). Re-enable by removing the workflow rule below.
 
-stages:
-  - deploy
-
-deploy_production:
-  stage: deploy
-  tags:
-    - node
-    - server7
-  interruptible: true
-  resource_group: whatsappman-site
+workflow:
   rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  script:
-    - |
-      set -e
-      KEY="$(mktemp)"; echo "$SERVER_ACCESS" | base64 -d > "$KEY"; chmod 600 "$KEY"
-      SSHO="-i $KEY -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=20"
-      H="$SERVER_USER@$SERVER_IP"
-
-      # .env from CI variables (dynamic; no secrets in the repo)
-      cat > deploy.env <<EOF
-      NODE_ENV=production
-      APP_VERSION=${CI_COMMIT_SHORT_SHA}
-      SERVER_PORT=${SERVER_PORT:-50121}
-      PGHOST=${PGHOST:-127.0.0.1}
-      PGPORT=${PGPORT:-5433}
-      PGUSER=${PGUSER:-whatsappman}
-      PGPASSWORD=${PGPASSWORD}
-      PGDATABASE=${PGDATABASE:-whatsappman_site}
-      SENDGRID_API_KEY=${SENDGRID_API_KEY}
-      MAIL_FROM_EMAIL=no-reply@whatsappman.indianic.dev
-      MAIL_FROM_NAME=WhatsAppMan
-      MAIL_LEADS_INBOX=hello@whatsappman.indianic.dev
-      SITE_NAME=WhatsAppMan
-      SITE_DOMAIN=${SITE_DOMAIN:-https://whatsappman.indianic.dev}
-      SITE_TAGLINE=Send WhatsApp messages from any AI tool — safely.
-      NPM_PACKAGE=@indianic/whatsappman
-      NPM_URL=https://npm.indianic.in/-/web/detail/@indianic/whatsappman
-      VITE_API_BASE=/api
-      VITE_SITE_NAME=WhatsAppMan
-      VITE_SITE_DOMAIN=${SITE_DOMAIN:-https://whatsappman.indianic.dev}
-      VITE_SITE_TAGLINE=Send WhatsApp messages from any AI tool — safely.
-      VITE_NPM_PACKAGE=@indianic/whatsappman
-      VITE_NPM_URL=https://npm.indianic.in/-/web/detail/@indianic/whatsappman
-      VITE_CONTACT_EMAIL=hello@whatsappman.indianic.dev
-      EOF
-
-      # ship ONLY the /site subfolder to the shell user's home
-      ssh $SSHO "$H" 'mkdir -p ~/whatsappman-site'
-      tar czf - --exclude=.git --exclude=node_modules --exclude=client/node_modules --exclude=client/dist --exclude=logs --exclude=.env -C site . \
-        | ssh $SSHO "$H" 'tar xzf - -C ~/whatsappman-site'
-      cat deploy.env | ssh $SSHO "$H" 'cat > ~/whatsappman-site/.env'
-
-      # build + migrate + seed + (re)start PM2 AS the shell user (persistent)
-      ssh $SSHO "$H" 'bash -s' <<'REMOTE'
-      set -e
-      source ~/.nvm/nvm.sh 2>/dev/null || true
-      command -v pm2 >/dev/null || npm install -g pm2 >/dev/null 2>&1
-      cd ~/whatsappman-site
-      npm install --no-audit --no-fund >/tmp/ni.log 2>&1 || { tail -20 /tmp/ni.log; exit 1; }
-      npm run build >/tmp/nb.log 2>&1 || { tail -25 /tmp/nb.log; exit 1; }
-      npm run migrate 2>&1 | tail -2
-      npm run seed 2>&1 | tail -1
-      pm2 delete whatsappman-site >/dev/null 2>&1 || true
-      APP_NAME=whatsappman-site pm2 start ecosystem.config.cjs 2>&1 | tail -3
-      pm2 save >/dev/null 2>&1
-      loginctl enable-linger 2>/dev/null || true
-      sleep 3
-      pm2 describe whatsappman-site | grep -iE "status|restarts" | head -2
-      curl -sS -m 6 http://127.0.0.1:50121/api/health && echo ""
-      REMOTE
-      rm -f "$KEY"
-      echo "Deployed $APP_NAME as $SERVER_USER (web user + linger, persistent)."
-  retry:
-    max: 2
-    when:
-      - runner_system_failure
-      - stuck_or_timeout_failure
+    - when: never
