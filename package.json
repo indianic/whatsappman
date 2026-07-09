@@ -1,6 +1,6 @@
 {
   "name": "@indianic/whatsappman",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "MCP server + CLI to send WhatsApp messages (text, image, document, location, contact) from any Claude CLI session, via a Baileys-backed always-on local daemon — multi-number, draft/confirm, no third-party API, no server, no database. macOS, Linux, Windows.",
   "author": "kalpesh",
   "type": "module",
@@ -54,5 +54,13 @@
     "tsx": "^4.16.0",
     "typescript": "^5.5.0",
     "typescript-eslint": "^8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/indianic/whatsappman.git"
+  },
+  "homepage": "https://whatsappman.indianic.dev",
+  "bugs": {
+    "url": "https://github.com/indianic/whatsappman/issues"
   }
 }

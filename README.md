@@ -16,15 +16,15 @@ WhatsAppMan CLI — send WhatsApp just by asking your AI assistant, built for In
 
 Ask your AI in plain English. WhatsAppMan **drafts, previews, and only sends on your OK** — never the moment you ask.
 
-![How WhatsAppMan works — ask, preview, your computer sends, delivered from your number](docs/images/how-it-works.png)
+![How WhatsAppMan works — ask, preview, your computer sends, delivered from your number](https://whatsappman.indianic.dev/readme/how-it-works.png)
 
 **Twelve plain-English tools** your AI can call — no raw "send", so nothing goes out unpreviewed:
 
-![What your AI can do — 12 MCP tools, plain-English first](docs/images/mcp-tools.png)
+![What your AI can do — 12 MCP tools, plain-English first](https://whatsappman.indianic.dev/readme/mcp-tools.png)
 
 **Real scenarios**, triggered by your AI, a cron, a webhook or a script — always sent from your own number:
 
-![Use cases — client updates, documents, scheduled reminders, deploy & on-call alerts, list messages, locations, status](docs/images/use-cases.png)
+![Use cases — client updates, documents, scheduled reminders, deploy & on-call alerts, list messages, locations, status](https://whatsappman.indianic.dev/readme/use-cases.png)
 
 ## Features
 
@@ -38,7 +38,7 @@ Ask your AI in plain English. WhatsAppMan **drafts, previews, and only sends on 
 - Installs into **Claude Code, Cursor, Gemini CLI, Windsurf, Codex** (`whatsappman register`) — cross-platform Win/Mac/Linux
 - 12 MCP tools, exposed to your AI over MCP
 
-![Everything WhatsApp, hands-free — send anything, multiple numbers, scheduled sends, smart recipient resolution, send history, stays connected](docs/images/features.png)
+![Everything WhatsApp, hands-free — send anything, multiple numbers, scheduled sends, smart recipient resolution, send history, stays connected](https://whatsappman.indianic.dev/readme/features.png)
 
 ## Installation
 
