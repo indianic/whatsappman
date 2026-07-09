@@ -1,4 +1,16 @@
-# whatsappman — `@indianic/whatsappman`
+# @indianic/whatsappman
+
+[![npm](https://img.shields.io/badge/npm-%40indianic%2Fwhatsappman-cb3837?style=flat-square&logo=npm)](https://npm.indianic.in/-/web/detail/@indianic/whatsappman)
+[![license](https://img.shields.io/badge/license-MIT-green?style=flat-square)](https://opensource.org/licenses/MIT)
+[![node](https://img.shields.io/badge/node-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![MCP](https://img.shields.io/badge/MCP-12%20tools-orange?style=flat-square)
+![platform](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-informational?style=flat-square)
+
+WhatsAppMan CLI — send WhatsApp messages just by asking your AI assistant, built for IndiaNIC infrastructure.
+
+> 🌐 **Live tour & docs:** [whatsappman.indianic.dev](https://whatsappman.indianic.dev)
+> 📦 **Package:** [`@indianic/whatsappman`](https://npm.indianic.in/-/web/detail/@indianic/whatsappman) — `npm i -g @indianic/whatsappman` (point the `@indianic` scope at `https://npm.indianic.in` first)
 
 An MCP server + CLI that lets any Claude CLI session send WhatsApp messages —
 text, images, documents, locations, contacts — with a preview/confirmation
@@ -23,7 +35,7 @@ and the daemon holds that connection open so a send from Claude just works.
 ## Why a daemon (and why that's unavoidable)
 
 Email is stateless — SMTP connects on demand, sends, and disconnects, so
-[mailman](../mailman) needs no background process. WhatsApp is the opposite:
+[mailman](https://github.com/indianic/mailman) needs no background process. WhatsApp is the opposite:
 Baileys holds a **persistent WebSocket** to WhatsApp's servers, and if that
 socket dies you can't send until something reconnects it. So whatsappman
 splits into two pieces:
