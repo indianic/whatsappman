@@ -12,6 +12,20 @@ WhatsAppMan CLI — send WhatsApp just by asking your AI assistant, built for In
 > 🌐 **Live tour & docs:** [whatsappman.indianic.dev](https://whatsappman.indianic.dev)
 > 📦 **Package:** [`@indianic/whatsappman`](https://npm.indianic.in/-/web/detail/@indianic/whatsappman) — `npm i -g @indianic/whatsappman` (point the `@indianic` scope at `https://npm.indianic.in` first)
 
+## See it in action
+
+Ask your AI in plain English. WhatsAppMan **drafts, previews, and only sends on your OK** — never the moment you ask.
+
+![How WhatsAppMan works — ask, preview, your computer sends, delivered from your number](docs/images/how-it-works.png)
+
+**Twelve plain-English tools** your AI can call — no raw "send", so nothing goes out unpreviewed:
+
+![What your AI can do — 12 MCP tools, plain-English first](docs/images/mcp-tools.png)
+
+**Real scenarios**, triggered by your AI, a cron, a webhook or a script — always sent from your own number:
+
+![Use cases — client updates, documents, scheduled reminders, deploy & on-call alerts, list messages, locations, status](docs/images/use-cases.png)
+
 ## Features
 
 - Send **text, images, documents, locations & contact cards** from your AI in plain English — "send 'running late' to Kalpesh"
@@ -23,6 +37,8 @@ WhatsAppMan CLI — send WhatsApp just by asking your AI assistant, built for In
 - Machine-bound credentials, desktop notifications, pre-send health check (never a false "sent")
 - Installs into **Claude Code, Cursor, Gemini CLI, Windsurf, Codex** (`whatsappman register`) — cross-platform Win/Mac/Linux
 - 12 MCP tools, exposed to your AI over MCP
+
+![Everything WhatsApp, hands-free — send anything, multiple numbers, scheduled sends, smart recipient resolution, send history, stays connected](docs/images/features.png)
 
 ## Installation
 
