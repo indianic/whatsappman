@@ -1,6 +1,6 @@
-# @indianic/whatsappman
+# @integratex/whatsappman
 
-[![npm](https://img.shields.io/badge/npm-%40indianic%2Fwhatsappman-cb3837?style=flat-square&logo=npm)](https://npm.indianic.in/-/web/detail/@indianic/whatsappman)
+[![npm](https://img.shields.io/npm/v/@integratex/whatsappman?style=flat-square&logo=npm&color=cb3837&label=npm)](https://www.npmjs.com/package/@integratex/whatsappman)
 [![license](https://img.shields.io/badge/license-MIT-green?style=flat-square)](https://opensource.org/licenses/MIT)
 [![node](https://img.shields.io/badge/node-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white)
@@ -10,7 +10,7 @@
 WhatsAppMan CLI — send WhatsApp just by asking your AI assistant, built for IndiaNIC infrastructure.
 
 > 🌐 **Live tour & docs:** [whatsappman.indianic.dev](https://whatsappman.indianic.dev)
-> 📦 **Package:** [`@indianic/whatsappman`](https://npm.indianic.in/-/web/detail/@indianic/whatsappman) — `npm i -g @indianic/whatsappman` (point the `@indianic` scope at `https://npm.indianic.in` first)
+> 📦 **Package:** [`@integratex/whatsappman`](https://www.npmjs.com/package/@integratex/whatsappman) — `npm i -g @integratex/whatsappman`
 
 ## See it in action
 
@@ -43,11 +43,10 @@ Ask your AI in plain English. WhatsAppMan **drafts, previews, and only sends on 
 ## Installation
 
 ```
-npm config set @indianic:registry https://npm.indianic.in
-npm install -g @indianic/whatsappman
+npm install -g @integratex/whatsappman
 ```
 
-(The `@indianic` scope routes to the private registry via your `~/.npmrc`, so no `--registry` flag is needed and public dependencies still resolve from npm.)
+Requires Node.js 18+. Installs the `whatsappman` CLI globally.
 
 ## Usage
 
@@ -98,7 +97,7 @@ You: which numbers are connected?
 You: schedule "standup in 5" for 9am tomorrow   # fires even if the tool is closed
 ```
 
-> **Package vs. command names.** The npm package is **`@indianic/whatsappman`**; it installs a CLI you run as **`whatsappman`**. A second alias, **`mcp-whatsappman`**, points at the same binary — use it only on a host that also has another `whatsappman` on `PATH`.
+> **Package vs. command names.** The npm package is **`@integratex/whatsappman`**; it installs a CLI you run as **`whatsappman`**. A second alias, **`mcp-whatsappman`**, points at the same binary — use it only on a host that also has another `whatsappman` on `PATH`.
 
 ## How it works
 
