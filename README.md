@@ -129,6 +129,17 @@ Baileys is an unofficial reverse-engineering of WhatsApp Web — great for perso
 - [docs/SECURITY.md](docs/SECURITY.md) — threat model & hardening · [docs/CROSS-OS.md](docs/CROSS-OS.md) — platform matrix
 - [docs/STANDARDS.md](docs/STANDARDS.md) — conventions · [docs/CHECKLIST.md](docs/CHECKLIST.md) — build log · [CHANGELOG.md](CHANGELOG.md) — releases
 
+## Acknowledgements
+
+whatsappman stands on [**Baileys**](https://github.com/WhiskeySockets/Baileys) — the WebSocket WhatsApp Web library that does the genuinely hard part: the protocol, the pairing, the encryption, the reconnects. Everything here is a daemon, an MCP server, and a CLI wrapped around it. Thank you to [Adhiraj Singh](https://github.com/adiwajshing), who wrote the original, and to Rajeh Taher and the [WhiskeySockets](https://github.com/WhiskeySockets) maintainers who carry it forward. MIT-licensed, and used as such.
+
+Thanks also to:
+
+- [**@modelcontextprotocol/sdk**](https://github.com/modelcontextprotocol/typescript-sdk) — Anthropic's TypeScript SDK for the Model Context Protocol, which is what lets your AI talk to this thing at all.
+- [**pino**](https://github.com/pinojs/pino), [**qrcode**](https://github.com/soldair/node-qrcode), [**zod**](https://github.com/colinhacks/zod), [**open**](https://github.com/sindresorhus/open), [**picocolors**](https://github.com/alexeyraspopov/picocolors), and [**mime-types**](https://github.com/jshttp/mime-types) — small, sharp dependencies that each do one job well.
+
+Not affiliated with, endorsed by, or connected to WhatsApp or Meta.
+
 ## License
 
 MIT
