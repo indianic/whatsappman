@@ -7,223 +7,111 @@
 ![MCP](https://img.shields.io/badge/MCP-12%20tools-orange?style=flat-square)
 ![platform](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-informational?style=flat-square)
 
-WhatsAppMan CLI — send WhatsApp messages just by asking your AI assistant, built for IndiaNIC infrastructure.
+WhatsAppMan CLI — send WhatsApp just by asking your AI assistant, built for IndiaNIC infrastructure.
 
 > 🌐 **Live tour & docs:** [whatsappman.indianic.dev](https://whatsappman.indianic.dev)
 > 📦 **Package:** [`@indianic/whatsappman`](https://npm.indianic.in/-/web/detail/@indianic/whatsappman) — `npm i -g @indianic/whatsappman` (point the `@indianic` scope at `https://npm.indianic.in` first)
 
-An MCP server + CLI that lets any Claude CLI session send WhatsApp messages —
-text, images, documents, locations, contacts — with a preview/confirmation
-step before anything actually goes out, **multiple linked numbers**, and a
-send log. Pure Node.js, so it runs the same way on macOS, Linux, and Windows.
-Configured once, globally, and available from any project you run Claude in —
-not tied to a single repo.
+## Features
 
-Under the hood it pairs [Baileys](https://github.com/WhiskeySockets/Baileys)
-(the WhatsApp Web protocol client) with a small **always-on local daemon**.
-There is **no third-party WhatsApp API, no API keys, no server you rent, no
-database, and no web dashboard** — your own machine becomes a WhatsApp
-"linked device" (exactly like scanning the QR for WhatsApp Web in a browser),
-and the daemon holds that connection open so a send from Claude just works.
+- Send **text, images, documents, locations & contact cards** from your AI in plain English — "send 'running late' to Kalpesh"
+- **Draft → preview → confirm** safety — nothing sends until you approve (`confirm_send` won't dispatch without an explicit confirmation); there's **no raw "send" tool**, so an AI can never send an unpreviewed message
+- **Multiple linked numbers**, each paired by QR, with per-send `--from` routing
+- **Scheduled sends** held by an always-on local daemon — they fire even if your editor is closed and survive restarts
+- Markdown → WhatsApp formatting, smart recipient resolution (name / phone / group, validated against WhatsApp), bulk send (throttled + capped), local send log
+- **No third-party API, no server, no database** — your machine becomes a WhatsApp "linked device" via [Baileys](https://github.com/WhiskeySockets/Baileys)
+- Machine-bound credentials, desktop notifications, pre-send health check (never a false "sent")
+- Installs into **Claude Code, Cursor, Gemini CLI, Windsurf, Codex** (`whatsappman register`) — cross-platform Win/Mac/Linux
+- 12 MCP tools, exposed to your AI over MCP
 
-> **Package vs. command names.** The npm package is
-> **`@indianic/whatsappman`** (that's what you `npx` / `npm install` /
-> register with Claude). It installs a CLI you run as **`whatsappman`**
-> (`whatsappman init`, `whatsappman status`, …). A second alias,
-> **`mcp-whatsappman`**, points at the same binary.
+## Installation
 
-## Why a daemon (and why that's unavoidable)
+```
+npm config set @indianic:registry https://npm.indianic.in
+npm install -g @indianic/whatsappman
+```
 
-Email is stateless — SMTP connects on demand, sends, and disconnects, so
-[mailman](https://github.com/indianic/mailman) needs no background process. WhatsApp is the opposite:
-Baileys holds a **persistent WebSocket** to WhatsApp's servers, and if that
-socket dies you can't send until something reconnects it. So whatsappman
-splits into two pieces:
+(The `@indianic` scope routes to the private registry via your `~/.npmrc`, so no `--registry` flag is needed and public dependencies still resolve from npm.)
 
-- **`whatsappmand` — the daemon.** Always running (installed as a
-  `launchd`/`systemd`/Task-Scheduler job by `whatsappman init`). Holds the
-  Baileys socket(s) + credentials, auto-reconnects, and is the *only* piece
-  that talks to WhatsApp. One per machine; it can hold **several numbers at
-  once**.
-- **The MCP server + CLI — thin clients.** Ephemeral. Claude spawns the MCP
-  server per session; you run the CLI in a terminal. Both just talk to the
-  daemon over a local **Unix domain socket** (`~/.whatsappman/daemon.sock`) —
-  no network, no port, no IP.
+## Usage
 
-You scan a QR **once** per number; the credentials persist to disk and
-survive reboots, so you never re-pair unless WhatsApp itself expires the link.
+```
+# First-run setup — installs the always-on daemon, links your first number
+# by QR, and registers your AI tools (Claude Code, Cursor, Gemini CLI, Windsurf, Codex)
+whatsappman init
 
-## Examples
+# Register with AI editors later
+whatsappman register --write --tools claude,cursor,gemini,windsurf,codex
+
+# Link & manage numbers
+whatsappman link --label work        # add another number (scan a QR)
+whatsappman numbers                  # list linked numbers + status
+whatsappman default work             # pick the default number for sends
+whatsappman relink work              # re-pair an expired number
+
+# Diagnostics & current state
+whatsappman doctor
+whatsappman status
+
+# Send from the terminal (the AI path is draft → confirm)
+whatsappman send "+91 99•••• 3349" "Build passed ✅"
+
+# Scheduled sends & history
+whatsappman scheduled
+whatsappman recent
+
+# Settings & self-update
+whatsappman settings set alwaysConfirm false
+whatsappman update
+
+# Help & version
+whatsappman help
+whatsappman --version
+```
+
+Once installed and registered, you talk to your AI — not the CLI — for everyday sending:
 
 ```
 You: whatsappman, send "running 10 min late" to Kalpesh
-Claude: [resolves the contact, drafts the message]
-        Ready to send via "work" (+91 98xxxxxxx0)?
-          To: Kalpesh Gamit
-          Text: running 10 min late
-        Confirm?
+AI:  [resolves the contact, drafts the message] Ready to send — confirm?
 You: yes
-Claude: Sent. ✓ delivered
-```
+AI:  Sent. ✓ delivered
 
-```
 You: whatsappman, send plan.pdf to the "Project Falcon" group
-Claude: [resolves the group JID, resolves the attachment]
-        Ready to send via "work"?
-          To: Project Falcon (group)
-          Document: plan.pdf (240 KB)
-        Confirm?
-You: yes
-Claude: Sent.
+You: which numbers are connected?
+You: schedule "standup in 5" for 9am tomorrow   # fires even if the tool is closed
 ```
 
-```
-You: whatsappman, which numbers are connected?
-Claude: [1] work      +91 98xxxxxxx0   connected
-        [2] personal   +91 99xxxxxxx1   needs_relink  (run: whatsappman relink personal)
-```
+> **Package vs. command names.** The npm package is **`@indianic/whatsappman`**; it installs a CLI you run as **`whatsappman`**. A second alias, **`mcp-whatsappman`**, points at the same binary — use it only on a host that also has another `whatsappman` on `PATH`.
 
-## Status
+## How it works
 
-**Functionally complete and self-verified on macOS; not yet real-hardware
-signed-off or published.** All core phases are built and committed on the
-`dev-kalpesh` branch: the two-process daemon + local-socket IPC (capability
-token, zod validation), Baileys linking with a terminal QR, multi-number
-support, the draft→confirm→send flow across all five message kinds (text,
-image, document, location, contact), bulk send, daemon-held scheduling, send
-history, settings, desktop notifications, `init`/`doctor`/`register`/`reset`,
-and the OS autostart install (launchd/systemd/OpenRC). Registering the MCP
-server is one command (`register --write [--tools …]`) that wires up Claude
-Code, Cursor, Gemini CLI, Windsurf, and Codex. **83 unit tests pass**
-(lint + typecheck + build green), and every CLI command + all 12 MCP tools have
-been smoke-tested end-to-end on this machine.
+WhatsApp needs a **persistent connection** — Baileys holds a live WebSocket, and that connection *is* the login. So whatsappman splits into two pieces:
 
-What's **not** done, and honestly so — each needs hardware or an external step I
-can't self-serve:
+- **`whatsappmand` — the daemon.** Always running (installed as a `launchd` / `systemd` / Task-Scheduler job by `whatsappman init`). Holds the Baileys socket(s) + credentials, auto-reconnects, and is the *only* piece that talks to WhatsApp. One per machine; it can hold **several numbers at once**.
+- **The MCP server + CLI — thin clients.** Ephemeral. Your AI spawns the MCP server per session; you run the CLI in a terminal. Both just talk to the daemon over a local **Unix domain socket** (`~/.whatsappman/daemon.sock`, `0600`) — no network, no port, no IP.
 
-- **Real send sign-off** — an actual QR scan + message delivery + reconnect-
-  after-restart needs a phone. Everything up to the scan is verified.
-- **Deferred security hardening** — keytar-backed credential encryption (a
-  native dep that would break the pure-Node/Alpine promise), an explicit
-  `getpeereid()` peer-UID check (needs a native addon; the `0600` socket already
-  enforces the same-UID boundary), and the Windows named-pipe ACL — see
-  [docs/SECURITY.md](docs/SECURITY.md).
-- **Cross-OS verification** — coded for macOS/Linux/Windows, only exercised on
-  macOS so far (see [docs/CROSS-OS.md](docs/CROSS-OS.md)).
-- **`npm publish` to `npm.indianic.in`** — pending, and only ever after
-  explicit confirmation.
-
-See [docs/CHECKLIST.md](docs/CHECKLIST.md) for the exact done-vs-deferred
-breakdown per phase and [docs/PLAN.md](docs/PLAN.md) for the architecture.
-
-The Baileys session/send logic is not written from scratch: it is adapted
-from IndiaNIC's existing **`@mcphub/plugin-baileys-whatsapp`** plugin
-(specifically its `src/standalone/` variant — the "no mcphub-core, no Redis,
-filesystem-auth" build), and the daemon install/lifecycle is modeled on the
-**newra** agent daemon (`launchd` `RunAtLoad` + `KeepAlive`) and mailman's
-`ticker-install.ts` (the launchd/cron/Task-Scheduler PATH handling).
-
-Deliberately **out of scope** (keeping this a pure send tool): inbound message
-handling/replies, webhooks, a web dashboard, a database, multi-tenant/customer
-scoping, group administration.
-
-## Docs
-
-- [docs/FEATURES.md](docs/FEATURES.md) — **features, flow & how it works** (non-technical + technical, with diagrams)
-- [CONTEXT.md](CONTEXT.md) — start here: condensed overview, status, key decisions
-- [docs/PLAN.md](docs/PLAN.md) — full architecture: daemon, socket IPC, sessions, tools, flows
-- [docs/SKILLS.md](docs/SKILLS.md) — the MCP tools this server exposes ("skills"), called by Claude
-- [docs/CLI.md](docs/CLI.md) — the terminal commands you run yourself (daemon + number management)
-- [docs/STANDARDS.md](docs/STANDARDS.md) — design, security, and coding conventions (inherited from mailman)
-- [docs/SECURITY.md](docs/SECURITY.md) — threat model, daemon access control, and hardening
-- [docs/CROSS-OS.md](docs/CROSS-OS.md) — cross-platform support matrix (macOS, Windows, Ubuntu/Xubuntu/Alpine Linux)
-- [docs/CHECKLIST.md](docs/CHECKLIST.md) — phased implementation checklist
-
-## Quick setup
-
-One command does the whole thing — installs the always-on daemon, links your
-first number by QR, and prints the MCP registration for your AI tools:
-
-```bash
-# once published:  npx @indianic/whatsappman init
-# from the repo now:  npm i && npm run build && node dist/index.js init
-```
-
-`init` runs: install the OS autostart daemon → start it → render a QR to scan
-(WhatsApp → Linked Devices) → print the `claude mcp add` line. Then, from any
-Claude session: *"whatsappman, send … to …"* — draft, confirm, sent.
-
-> **Note:** `init` loads a real OS login-item (launchd/systemd) and the QR scan
-> pairs your live WhatsApp account — both are deliberate, one-time actions you
-> run yourself, not part of any build or test.
-
-## The reliability promise
-
-Everything that can be engineered for reliability is:
-
-- Daemon crashes → `launchd`/`systemd` `KeepAlive` restarts it in seconds.
-- Machine reboots / you log in → `RunAtLoad` auto-starts it.
-- Machine wakes from sleep → Baileys auto-reconnects each session.
-
-The one thing no local code can prevent is **WhatsApp itself invalidating a
-pairing** (you log the device out, your phone stays offline for ~14 days, or
-the number gets flagged). When that happens whatsappman marks the session
-`needs_relink` and **every send returns a clear, actionable error rather than
-silently failing** — you never get a false "sent." That's the honest
-guarantee: *100% reliable feedback, ~99% availability while your machine is
-awake and online.*
+You scan a QR **once** per number; credentials persist to disk and survive reboots, so you never re-pair unless WhatsApp itself expires the link. Daemon crash → `KeepAlive`/`Restart` brings it back; reboot → `RunAtLoad` auto-starts it; sleep/wake → Baileys reconnects. If WhatsApp invalidates a pairing, the number flips to `needs_relink` and every send returns a **clear, actionable error — never a false "sent."**
 
 ## Desktop notifications
 
-Because the daemon runs in the background, whatsappman fires an **OS desktop
-notification** for the events you'd otherwise miss — **default-on**:
+Default-on, best-effort OS notifications for events a background daemon would otherwise hide — a number dropping to `needs_relink`, and scheduled sends firing (✓/✗). macOS `osascript`, Linux `notify-send`, Windows PowerShell toast; a missing/denied mechanism silently no-ops. Disable with `whatsappman settings set notifications false`.
 
-- a linked number drops to `needs_relink` (you were logged out → a send will
-  fail until you re-scan a QR);
-- a **scheduled** send fires (sent ✓ or failed ✗).
-
-They're **best-effort**: whatsappman never depends on a notification being
-delivered, and if the OS mechanism is missing or not permitted it **silently
-no-ops** — it never blocks or fails a send.
-
-| OS | Mechanism | Needs |
-|---|---|---|
-| **macOS** | `osascript -e 'display notification …'` | notifications allowed for **Script Editor** — see the caveat below |
-| **Linux / BSD** | `notify-send` (libnotify) | `libnotify` installed + a notification daemon running (a desktop session; headless servers have none → no-op) |
-| **Windows** | PowerShell WinRT toast | PowerShell (built in); toasts enabled for the session |
-
-**Disable them** any time:
-
-```bash
-whatsappman settings set notifications false     # persistent
-# or, per-process:
-WHATSAPPMAN_NOTIFICATIONS=0 whatsappman start
-```
-
-### ⚠️ macOS caveat — "notifications don't show up"
-
-On macOS, whatsappman fires notifications via `osascript`, and macOS attributes
-them to the **Script Editor** app, *not* to whatsappman. If Script Editor's
-notifications are turned off, the call still succeeds but **nothing appears** —
-a silent no-op that looks like a bug. To enable them:
-
-> **System Settings → Notifications → Script Editor → Allow Notifications (on)**
-
-This is almost always the fix when macOS notifications seem broken — it's a
-one-time permission toggle, not a whatsappman problem.
+> **macOS caveat:** notifications are attributed to **Script Editor**. If they don't appear, enable **System Settings → Notifications → Script Editor → Allow Notifications**.
 
 ## A word of caution
 
-Baileys is an unofficial reverse-engineering of WhatsApp Web. It's well-suited
-to personal and low-volume use; automated **bulk** blasting risks getting the
-number banned by WhatsApp. The `defaultDelayMs` / `maxBulkRecipients` throttles
-exist for exactly this reason — use them.
+Baileys is an unofficial reverse-engineering of WhatsApp Web — great for personal / low-volume use; automated **bulk** blasting risks a ban. The `defaultDelayMs` / `maxBulkRecipients` throttles exist for that reason.
 
-**Keep `~/.whatsappman` out of cloud sync and backups.** That folder holds your
-live linked-device session creds — a synced or backed-up copy is a fully
-portable clone of your WhatsApp connection. Exclude it from iCloud Drive, Time
-Machine, Dropbox, and OneDrive; syncing it off-box defeats the machine-bound
-protection. See [docs/SECURITY.md](docs/SECURITY.md) for the full rationale.
+**Keep `~/.whatsappman` out of cloud sync and backups** — it holds your live linked-device credentials; a synced copy is a portable clone of your WhatsApp connection. Exclude it from iCloud Drive, Time Machine, Dropbox, OneDrive.
+
+## Docs
+
+- [docs/FEATURES.md](docs/FEATURES.md) — features, flow & how it works (non-technical + technical)
+- [CONTEXT.md](CONTEXT.md) — condensed overview, status, key decisions
+- [docs/PLAN.md](docs/PLAN.md) — full architecture · [docs/SKILLS.md](docs/SKILLS.md) — MCP tools · [docs/CLI.md](docs/CLI.md) — CLI commands
+- [docs/SECURITY.md](docs/SECURITY.md) — threat model & hardening · [docs/CROSS-OS.md](docs/CROSS-OS.md) — platform matrix
+- [docs/STANDARDS.md](docs/STANDARDS.md) — conventions · [docs/CHECKLIST.md](docs/CHECKLIST.md) — build log · [CHANGELOG.md](CHANGELOG.md) — releases
 
 ## License
 
