@@ -10,7 +10,7 @@ items lifted/adapted from the `@mcphub/plugin-baileys-whatsapp` plugin's
 
 ## Phase 0 — Project setup ✅ DONE
 
-- [x] `package.json` (bin: `whatsappman` + `mcp-whatsappman`, `publishConfig.registry = https://npm.indianic.in/`), `tsconfig.json`, `.gitignore`, `eslint.config.js`
+- [x] `package.json` (bin: `whatsappman` + `mcp-whatsappman`, `publishConfig.access = public`), `tsconfig.json`, `.gitignore`, `eslint.config.js`
 - [x] Install deps: `@whiskeysockets/baileys`, `qrcode`, `pino`, `zod`, `@modelcontextprotocol/sdk`, `mime-types`, `open`, `picocolors` (used `picocolors` for the tree instead of `@clack/prompts` — lighter, no extra dep surface)
 - [x] `src/config/paths.ts` — resolve global config dir `~/.whatsappman/` via `os.homedir()`, honoring `WHATSAPPMAN_DIR` override; create with `0700` (+ long-socket-path tmpdir fallback, found via a real EINVAL on a deep test dir)
 - [x] `src/index.ts` — argv dispatcher: pipes-with-no-args → MCP server; `daemon` → daemon; anything else → CLI; `--version`/`--help`
@@ -84,7 +84,7 @@ items lifted/adapted from the `@mcphub/plugin-baileys-whatsapp` plugin's
 - [x] Windows `schtasks` at-logon task writer (2026-07-02): `buildSchtasksXml` generates a Task Scheduler XML task that starts the daemon at logon with **restart-on-failure** (the Windows parity for launchd `KeepAlive` / systemd `Restart=on-failure`), runs `node <launcher>` at `LeastPrivilege`, never times out (`PT0S`); `install`/`uninstall`/`isInstalled` wired via `schtasks /Create /XML|/Delete|/Query` (XML staged as UTF-16LE+BOM, which schtasks requires). 4 unit tests + generated XML validated well-formed (xmllint). *(Actual execution on a Windows box is the only remaining sign-off — see below.)*
 - [x] `whatsappman init` wires it all: `daemon install` → `start` → `link` first number (QR) → `register` MCP config
 - [x] `whatsappman doctor` — Node ≥18, `node`/`npx` on PATH, config-dir + socket + token perms, daemon reachable, mechanism + installed?, per-session connection (pre-init state shown as advisories, not errors)
-- [x] `register` — prints `claude mcp add whatsappman -- npx -y @indianic/whatsappman` + a generic MCP JSON snippet; `--write` runs `claude mcp add` when the CLI is present (safe: no blind config-file mutation)
+- [x] `register` — prints `claude mcp add whatsappman -- npx -y @integratex/whatsappman` + a generic MCP JSON snippet; `--write` runs `claude mcp add` when the CLI is present (safe: no blind config-file mutation)
 - [x] Unit tests (30 total): hostname slug, baked PATH, plist (RunAtLoad/KeepAlive/throttle/PATH), systemd unit (Restart=on-failure), launcher script, `planInstall` writes nothing
 - [x] Verified without mutating the system: `daemon install --print` shows the exact plist + launcher; confirmed nothing written to `~/Library/LaunchAgents`; `doctor` runs read-only
 - [~] **Manual sign-off (2026-07-02)**: launchd autostart is installed + running (`doctor`). `kill -9` on the **launchd-supervised** daemon → `KeepAlive` restarted it in ~3s (10322→10473); `stop`'s clean SIGTERM stays stopped (KeepAlive `SuccessfulExit:false`). Literal reboot auto-start still unverified (needs a reboot).
@@ -107,7 +107,7 @@ items lifted/adapted from the `@mcphub/plugin-baileys-whatsapp` plugin's
 - [x] `settings get`/`set <key> <value>` (validated + coerced; `get_settings`/`update_settings` IPC — CLI-only, not MCP), `whatsappman send` quick terminal send (Phase 2/4), `reset` (`--yes`: stop daemon → uninstall autostart → wipe config dir)
 - [x] Unit tests (38 total): `sent.jsonl` rotation, `readRecent` newest-first + limit + `from` filter + corrupt-line skip
 - [x] Verified: settings round-trip to disk (with `schemaVersion`), reset wipes cleanly, MCP surface now 12 tools (list_recent added), still **no raw send**
-- [x] `update`/`upgrade` self-update — `whatsappman update` checks npm.indianic.in (via the `@indianic:registry` scope route), `npm install -g @latest` if newer, then restarts the daemon so it loads the new build; no-op "already up to date" when current. Verified live against the published 0.1.0.
+- [x] `update`/`upgrade` self-update — `whatsappman update` checks npm for whatever name package.json publishes under (`getPackageName()`, no hardcoded literal, no `--registry` flag), `npm install -g @latest` if newer, then restarts the daemon so it loads the new build; no-op "already up to date" when current. Verified live against the published 0.1.0.
 - [x] `register` multi-tool config writer (2026-07-02) — `register --write [--tools …] [--project]` writes/merges the `whatsappman` MCP entry into Claude Code (via official `claude mcp add`), Cursor, Gemini CLI, Windsurf, and Codex (idempotent JSON merge / TOML block replace, preserves unrelated servers). Ported the pure writer from mailman's `editor-config.ts` (no `@clack` dep — non-interactive). 12 unit tests + verified end-to-end against a temp HOME.
 - [x] README / CONTEXT / docs final pass against the shipped surface (commit 505a104)
 
@@ -157,6 +157,6 @@ never blocking a send.
 
 ## Pending, deliberately not automatic
 
-- [x] **`npm publish` to `npm.indianic.in`** — DONE (2026-07-02): `@indianic/whatsappman@0.1.0` published (author kalpesh, MIT), `latest` tag, resolves from the registry. Install: `npx @indianic/whatsappman init`.
+- [x] **`npm publish`** — first published 2026-07-02 as `@indianic/whatsappman@0.1.0` on the then-private `npm.indianic.in` (author kalpesh, MIT). That registry is now **retired**: the package ships as `@integratex/whatsappman` on the public npm registry via `./scripts/release-public.sh`. Install: `npx @integratex/whatsappman init`.
 - [x] **Registering the real OS daemon job on this machine (2026-07-02)** — done: `doctor` confirms `mechanism: launchd`, `OS autostart installed`, daemon `running + reachable`, `default — connected`. Survives reboot (auto-start + reconnect verified today via crash simulation).
 - [ ] **A real long-lived link test** — leaving a number paired for >2 weeks to observe WhatsApp's linked-device expiry and confirm the `NEEDS_RELINK` path triggers cleanly.

@@ -175,9 +175,9 @@ access. Controls:
 
 ## Update security
 
-`whatsappman update` pulls `@indianic/whatsappman` from `npm.indianic.in` over
-TLS; integrity is enforced by lockfile hashes; no elevated/`sudo` postinstall
-runs. Publishing is **manual, only after explicit confirmation** — never
+`whatsappman update` pulls `@integratex/whatsappman` from `registry.npmjs.org`
+over TLS; integrity is enforced by lockfile hashes; no elevated/`sudo`
+postinstall runs. Publishing is **manual, only after explicit confirmation** — never
 automated.
 
 ## Going further (opt-in OS sandboxing)

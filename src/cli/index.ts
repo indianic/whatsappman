@@ -210,7 +210,8 @@ function printHelp(): void {
   row('status           daemon + linked-number status');
   section('numbers');
   row('link [--label n]     link a number (scan a QR); pass --label to add MORE');
-  row('relink <label>       re-pair an expired number (fresh QR)');
+  row('     [--image]       open the QR as an image instead of drawing it in the terminal');
+  row('relink <label>       re-pair an expired number (fresh QR); --image works here too');
   row('reconnect <label>    reconnect a dropped session');
   row('disconnect <label>   drop the socket, keep creds');
   row('delete <label>       permanently remove a number (--yes)');
@@ -317,12 +318,13 @@ export async function cliMain(args: string[]): Promise<number> {
       return 0;
 
     case 'link': {
-      const label = takeFlag(args, '--label') ?? args[1];
-      return runLink(label);
+      const asImage = hasFlag(args, '--image');
+      const label = takeFlag(args, '--label') ?? (args[1] === '--image' ? undefined : args[1]);
+      return runLink(label, asImage);
     }
 
     case 'relink':
-      return runRelink(args[1]);
+      return runRelink(args[1], hasFlag(args, '--image'));
 
     case 'reconnect':
       return runReconnect(args[1]);

@@ -1,20 +1,21 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { intro, outro, section, row, fact, attention, fail } from './tree.js';
-import { getVersion } from '../version.js';
+import { getVersion, getPackageName } from '../version.js';
 import { isNewerVersion } from './update-notifier.js';
 import { isDaemonAlive } from '../daemon/lock.js';
 import { restartDaemon } from './daemon-control.js';
 
 const execFileAsync = promisify(execFile);
-const PKG = '@indianic/whatsappman';
+const PKG = getPackageName();
 
 /**
- * `whatsappman update` (alias `upgrade`) — check npm.indianic.in for a newer
- * version and update the global install in place. Relies on ~/.npmrc's
- * `@indianic:registry` scope routing (no --registry flag), same as every other
- * install path. If the daemon is running it's restarted afterward so it loads
- * the new code (a running daemon keeps executing the OLD dist until it does).
+ * `whatsappman update` (alias `upgrade`) — check the npm registry for a newer
+ * version and update the global install in place. Queries whatever name this
+ * install was published under (no --registry flag — npm's configured default,
+ * registry.npmjs.org, resolves it), same as every other install path. If the
+ * daemon is running it's restarted afterward so it loads the new code (a
+ * running daemon keeps executing the OLD dist until it does).
  */
 export async function runUpdate(): Promise<number> {
   intro('whatsappman — update');

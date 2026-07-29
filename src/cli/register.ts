@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { intro, outro, section, row, fact, attention, fail } from './tree.js';
 import { EDITORS, resolveTools, writeEditorConfig, type Scope } from './editor-config.js';
+import { getPackageName } from '../version.js';
 
 /**
  * Register the whatsappman MCP server with AI editors.
@@ -14,7 +15,7 @@ import { EDITORS, resolveTools, writeEditorConfig, type Scope } from './editor-c
  *   directly (idempotent merge — see editor-config.ts).
  */
 
-const PKG = '@indianic/whatsappman';
+const PKG = getPackageName();
 const ADD_CMD = `claude mcp add whatsappman -- npx -y ${PKG}`;
 
 function claudeCliAvailable(): boolean {

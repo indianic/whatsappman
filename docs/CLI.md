@@ -24,7 +24,7 @@ what the OS startup job invokes; it's not something you normally type (use
 | Command | Purpose |
 |---|---|
 | `whatsappman init` | First-run wizard, the recommended starting point. Installs the always-on daemon (launchd/systemd/Task-Scheduler job), starts it, **links your first number by QR** (prints the QR in the terminal — scan it with WhatsApp → Linked Devices), sets it as default, then **auto-writes the `whatsappman` MCP config into whichever AI tools you pick** (Claude Code, Cursor, Gemini CLI, Windsurf, Codex) at a chosen scope. Idempotent. |
-| `whatsappman register` | Register whatsappman with your AI editors without the rest of `init`. `register --tools <a,b,…\|all> [--scope global\|project]` writes/merges each tool's MCP config directly (same engine `init` uses; idempotent). `register -i` runs the interactive picker. Bare `register` just prints the copy-pasteable `claude mcp add whatsappman -- npx -y @indianic/whatsappman` line without writing anything. |
+| `whatsappman register` | Register whatsappman with your AI editors without the rest of `init`. `register --tools <a,b,…\|all> [--scope global\|project]` writes/merges each tool's MCP config directly (same engine `init` uses; idempotent). `register -i` runs the interactive picker. Bare `register` just prints the copy-pasteable `claude mcp add whatsappman -- npx -y @integratex/whatsappman` line without writing anything. |
 
 ### Daemon lifecycle
 
@@ -43,7 +43,7 @@ what the OS startup job invokes; it's not something you normally type (use
 
 | Command | Purpose |
 |---|---|
-| `whatsappman link [--label <name>]` | Link a **new** number. Renders a fresh QR in the terminal; scan it with WhatsApp → Linked Devices. On success, writes `sessions/<label>/` with the resolved phone number. Repeat for as many numbers as you want. Defaults the label to the phone number if `--label` is omitted. |
+| `whatsappman link [--label <name>] [--image]` | Link a **new** number. Renders a fresh QR in the terminal; scan it with WhatsApp → Linked Devices. On success, writes `sessions/<label>/` with the resolved phone number. Repeat for as many numbers as you want. Defaults the label to the phone number if `--label` is omitted. Pass `--image` to open the QR as a PNG in your image viewer instead — useful when a large terminal font makes the in-terminal QR fill the window (it can't be shrunk below one module per character cell). |
 | `whatsappman numbers` (alias `list`) | Table of all sessions: **label · phone · status · last-connected · default**. |
 | `whatsappman status <label>` | Detail for one number. (Bare `whatsappman status` shows the whole tree.) |
 | `whatsappman relink <label>` | Re-pair an expired/logged-out number with a fresh QR — keeps the label and history. This is what a `NEEDS_RELINK` error tells you to run. |
@@ -66,7 +66,7 @@ what the OS startup job invokes; it's not something you normally type (use
 |---|---|
 | `whatsappman settings get` | Print current global settings (`draftTtlMinutes`, `defaultDelayMs`, `maxBulkRecipients`, `alwaysConfirm`, `notifications`). |
 | `whatsappman settings set <key> <value>` | Update one setting. `defaultDelayMs` / `maxBulkRecipients` throttle bulk sends to reduce ban risk. `notifications false` turns off desktop notifications (default on; see the README's *Desktop notifications* section, incl. the macOS Script Editor permission caveat). Also overridable per-process with `WHATSAPPMAN_NOTIFICATIONS=0`. |
-| `whatsappman update` (alias `upgrade`) | Self-update: checks `npm.indianic.in` for a newer `@indianic/whatsappman` and updates the global install in place, then restarts the daemon so it loads the new build (briefly drops + auto-reconnects each session). No-op with a clear message when already current. |
+| `whatsappman update` (alias `upgrade`) | Self-update: checks npm for a newer `@integratex/whatsappman` and updates the global install in place, then restarts the daemon so it loads the new build (briefly drops + auto-reconnects each session). No-op with a clear message when already current. |
 | `whatsappman reset` | Wipes `~/.whatsappman/` (all sessions, creds, logs, scheduled queue) **and** uninstalls the daemon startup job, for a clean re-setup. Destructive — requires explicit `--yes`, no default-confirm bypass. |
 | `whatsappman help [command]` | The command list (same as `--help`), or one command's summary. |
 | `whatsappman examples` | Usage examples: the one-time terminal setup plus what to actually say inside your AI tool. Rendered in the same diamond tree as every other command. |
@@ -83,7 +83,7 @@ credentials are created, so it stays a deliberate, human-run action.
 ## Typical first run
 
 ```bash
-npx @indianic/whatsappman init
+npx @integratex/whatsappman init
 # → installs the daemon, prints a QR
 # → scan with WhatsApp (Settings → Linked Devices → Link a Device)
 # → "work" number connected, set as default

@@ -1,7 +1,9 @@
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'node_modules/**'] },
+  // `.remember/` is agent-tool scratch, `site/client/dist` is a build artifact —
+  // neither is our source, and linting them only produces noise.
+  { ignores: ['dist/**', 'node_modules/**', '.remember/**', 'site/client/dist/**'] },
   ...tseslint.configs.recommended,
   {
     rules: {

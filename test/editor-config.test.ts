@@ -13,8 +13,12 @@ import {
   writeEditorConfig,
   resolveTools,
 } from '../src/cli/editor-config.js';
+import { getPackageName } from '../src/version.js';
 
-const PKG = '@indianic/whatsappman';
+// Derived, not hardcoded — the launch block must track whatever name
+// package.json publishes under, so a re-scope can't silently leave editor
+// configs pointing at a package that no longer resolves.
+const PKG = getPackageName();
 
 test('jsonServerBlock is the secretless npx launch of the scoped package (no env)', () => {
   const block = jsonServerBlock();
@@ -49,7 +53,7 @@ test('mergeJsonMcpServers is idempotent — re-running yields one entry, not dup
 test('mergeCodexToml appends a whatsappman block and replaces (not duplicates) on re-run', () => {
   const first = mergeCodexToml('');
   assert.match(first, /\[mcp_servers\.whatsappman\]/);
-  assert.match(first, /@indianic\/whatsappman/);
+  assert.ok(first.includes(PKG), `codex block must launch ${PKG}`);
 
   const second = mergeCodexToml(first);
   const occurrences = second.split('[mcp_servers.whatsappman]').length - 1;

@@ -1,7 +1,7 @@
 # WhatsAppMan — Features, Flow & How It Works
 
-> **Package:** `@indianic/whatsappman` · **Version:** 0.2.0 · **Author:** kalpesh · **License:** MIT
-> **Registry:** `npm.indianic.in` · **Status:** published & working (macOS verified live)
+> **Package:** `@integratex/whatsappman` · **Version:** 0.3.0 · **Author:** kalpesh · **License:** MIT
+> **Registry:** [npmjs.com](https://www.npmjs.com/package/@integratex/whatsappman) (public) · **Status:** published & working (macOS verified live)
 
 This document explains WhatsAppMan for **everyone** — a plain-English part for
 anyone, and a deeper technical part for developers. Read the section that fits
@@ -57,7 +57,7 @@ whenever you (or your AI) want to send something, it's ready instantly.
 
 1. Install & set up with a single command:
    ```
-   npx @indianic/whatsappman init
+   npx @integratex/whatsappman init
    ```
 2. A **QR code** appears in your terminal → open **WhatsApp → Settings →
    Linked Devices → Link a Device** → scan it.
@@ -279,7 +279,7 @@ event (needs_relink | scheduled sent/failed)
 ### 6) Self-update
 ```
 whatsappman update
-  → npm view @indianic/whatsappman version   (registry)
+  → npm view @integratex/whatsappman version   (registry)
   → strictly newer? → npm install -g @latest → restart daemon (loads new code)
   → else "already up to date"
 Passive notifier: a cached, TTY-only "update available" line before commands.
@@ -315,7 +315,7 @@ Passive notifier: a cached, TTY-only "update available" line before commands.
 - **67 unit tests** pass; lint + typecheck + build clean.
 - **Verified live on macOS**: link/QR, real send + delivery, Markdown formatting,
   scheduled send, desktop notification banner, self-update.
-- **Published** as `@indianic/whatsappman@0.2.0` on `npm.indianic.in`.
+- **Published** as `@integratex/whatsappman` on the public npm registry.
 - **Remaining** (needs other hardware, not code): Linux/Windows banner sign-off,
   cross-OS smoke tests, and the deferred native-dep security hardening.
 

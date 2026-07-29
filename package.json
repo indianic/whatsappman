@@ -1,11 +1,11 @@
 {
-  "name": "@indianic/whatsappman",
-  "version": "0.2.3",
+  "name": "@integratex/whatsappman",
+  "version": "0.3.0",
   "description": "MCP server + CLI to send WhatsApp messages (text, image, document, location, contact) from any Claude CLI session, via a Baileys-backed always-on local daemon — multi-number, draft/confirm, no third-party API, no server, no database. macOS, Linux, Windows.",
   "author": "kalpesh",
   "type": "module",
   "publishConfig": {
-    "registry": "https://npm.indianic.in/"
+    "access": "public"
   },
   "bin": {
     "whatsappman": "bin/whatsappman.js",
@@ -22,7 +22,9 @@
     "dev": "tsx src/index.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test test/*.test.ts"
+    "test": "tsx --test test/*.test.ts",
+    "eval": "tsx --test eval/*.eval.ts",
+    "verify": "npm run lint && npm run typecheck && npm run build && npm test && npm run eval"
   },
   "engines": {
     "node": ">=18"

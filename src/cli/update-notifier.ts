@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import pc from 'picocolors';
 import { baseDir } from '../config/paths.js';
-import { getVersion } from '../version.js';
+import { getVersion, getPackageName } from '../version.js';
 
 /**
  * Passive "update available" notifier (ported from mailman) — every
@@ -21,7 +21,7 @@ import { getVersion } from '../version.js';
  */
 
 const execFileAsync = promisify(execFile);
-const PKG = '@indianic/whatsappman';
+const PKG = getPackageName();
 const TTL_MS = 24 * 60 * 60 * 1000; // check the registry at most once a day
 /** Hidden subcommand the detached refresh re-enters through (not in COMMANDS). */
 export const REFRESH_COMMAND = '__refresh-update-cache';

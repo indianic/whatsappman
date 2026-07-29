@@ -17,7 +17,7 @@ import type { Method } from '../ipc/protocol.js';
  * (preview, no send) then confirm_send (the only dispatcher, idempotent). See
  * docs/SKILLS.md.
  */
-interface ToolDef {
+export interface ToolDef {
   description: string;
   inputSchema: Record<string, unknown>;
   method: Method;
@@ -32,7 +32,12 @@ const obj = (props: Record<string, unknown>, required: string[] = []) => ({
 const str = (description: string) => ({ type: 'string', description });
 const num = (description: string) => ({ type: 'number', description });
 
-const TOOLS: Record<string, ToolDef> = {
+/**
+ * Exported so the eval suite (eval/*.eval.ts) can inspect the surface an LLM
+ * actually sees — the safety gating below is a *product claim*, so it needs to
+ * be assertable, not just described in a comment.
+ */
+export const TOOLS: Record<string, ToolDef> = {
   get_status: {
     description:
       'Daemon status + the state of all linked WhatsApp numbers (sessions) + pending-scheduled count. Returns JSON.',
@@ -91,7 +96,8 @@ const TOOLS: Record<string, ToolDef> = {
     method: 'confirm_send',
   },
   cancel_draft: {
-    description: 'Discard a pending draft without sending.',
+    description:
+      'Discard a pending draft so it can never be sent. Use this when the user rejects the preview or wants it redrafted. Takes the draftId from draft_message; that id is dead afterwards.',
     inputSchema: obj({ draftId: str('the id returned by draft_message') }, ['draftId']),
     method: 'cancel_draft',
   },
@@ -110,7 +116,8 @@ const TOOLS: Record<string, ToolDef> = {
     method: 'list_scheduled',
   },
   cancel_scheduled: {
-    description: 'Cancel a pending scheduled send.',
+    description:
+      'Cancel a scheduled send so it never fires. Takes the scheduledId from schedule_send or list_scheduled. Only a pending one can be cancelled — an already-sent or failed entry is left untouched.',
     inputSchema: obj({ scheduledId: str('the id returned by schedule_send') }, ['scheduledId']),
     method: 'cancel_scheduled',
   },

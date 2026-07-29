@@ -1,20 +1,21 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
+import { getPackageName } from '../version.js';
 
 /**
  * Writes/merges the `whatsappman` MCP server entry into each supported editor's
  * config file — the "one command wires up every tool" ergonomics ported from
- * the sibling @indianic/mailman. See docs/SKILLS.md for the registration story.
+ * the sibling mailman. See docs/SKILLS.md for the registration story.
  *
  * The launch block carries **no secrets**: WhatsApp creds live under
  * `~/.whatsappman/` (held by the daemon), never in editor config. So there's no
  * API key to prompt for, nothing to lock to 0600, and the block is identical
- * for every editor — just `npx -y @indianic/whatsappman`.
+ * for every editor — just `npx -y @integratex/whatsappman`.
  */
 
 export const SERVER_KEY = 'whatsappman';
-const NPM_PACKAGE = '@indianic/whatsappman';
+const NPM_PACKAGE = getPackageName();
 
 export type Scope = 'global' | 'project';
 export type EditorFormat = 'json' | 'toml';

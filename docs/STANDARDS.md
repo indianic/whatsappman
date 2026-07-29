@@ -90,12 +90,12 @@ an AI host never has to parse decorative output.
 
 | Field | Value |
 |---|---|
-| `name` | `@indianic/whatsappman` |
+| `name` | `@integratex/whatsappman` |
 | `bin` | `whatsappman` (primary) + `mcp-whatsappman` (alias, same binary) |
 | `author` | `kalpesh` |
 | `license` | `MIT` |
-| `publishConfig.registry` | `https://npm.indianic.in/` (private IndiaNIC registry) |
-| Publish | **only after explicit confirmation** — never automatic (matches mailman) |
+| `publishConfig.access` | `public` — published to `registry.npmjs.org` (npm's default registry; no pin) |
+| Publish | `./scripts/release-public.sh`, **only after explicit confirmation** — never automatic (matches mailman) |
 
 ## Repository structure (keep it consistent)
 

@@ -44,18 +44,20 @@ breakdown.
   variant (no mcphub-core, no Redis, filesystem-auth). The daemon
   install/lifecycle is modeled on the **newra** agent daemon and mailman's
   `src/scheduler/ticker-install.ts`.
-- **Deploy target**: `@indianic/whatsappman` on the IndiaNIC private registry
-  (`npm.indianic.in`) — **only after explicit confirmation**, never
-  automatically.
+- **Deploy target**: `@integratex/whatsappman` on the public npm registry
+  (`registry.npmjs.org`) via `./scripts/release-public.sh` — **only after
+  explicit confirmation**, never automatically.
 
 ## Repo facts
 
 | | |
 |---|---|
 | Location | `/Users/kalpesh/Sites/IndiaNIC/Products/WhatsAppMan/` (sibling to `mailman`) |
-| Package name | `@indianic/whatsappman` (npm, unpublished) |
+| Package name | `@integratex/whatsappman` (public npm) |
 | Bin name | `whatsappman` (primary), `mcp-whatsappman` (alias to the same binary) |
-| Registry | `npm.indianic.in` (publish pending confirmation) |
+| Registry | `registry.npmjs.org` (public) — the old private `npm.indianic.in` is retired |
+| Source of truth | GitHub: `github.com/indianic/whatsappman` (the internal GitLab remote is retired) |
+| Marketing site | separate repo, outside this root — `../WhatsAppMan-Site` (deploys to `whatsappman.indianic.dev`) |
 | Reference projects | `../mailman` (UX/structure), `mcphub/packages/plugins/baileys-whatsapp` (Baileys logic), newra daemon (`~/.newra`, launchd pattern) |
 
 ## The one architectural fact that shapes everything

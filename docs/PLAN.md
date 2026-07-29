@@ -101,7 +101,7 @@ daemon**, never a second daemon.
 
 ```
 whatsappman/
-├── package.json          bin: "whatsappman" + "mcp-whatsappman", published to npm.indianic.in
+├── package.json          bin: "whatsappman" + "mcp-whatsappman", published to npmjs.org
 ├── src/
 │   ├── index.ts            entrypoint — dispatches by argv: MCP server (stdio) | daemon | CLI
 │   ├── mcp/
@@ -461,7 +461,7 @@ Every failable tool/method returns `{ code, message }`:
 
 ## Deployment
 
-Published to the IndiaNIC private registry `npm.indianic.in` as
-`@indianic/whatsappman` (same `publishConfig.registry` as mailman) — **only
-after explicit confirmation**, never as part of the build. Public
-`registry.npmjs.org` is not a target.
+Published to the public registry `registry.npmjs.org` as
+`@integratex/whatsappman` via `./scripts/release-public.sh` — **only after
+explicit confirmation**, never as part of the build. The former private
+registry `npm.indianic.in` is retired and is no longer a target.
