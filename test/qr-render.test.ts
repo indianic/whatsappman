@@ -194,8 +194,21 @@ test('the image painter writes 0600 into a 0700 dir, and cleans up', { skip: pro
 });
 
 test('the PNG QR is real, non-trivial image data at a scannable size', async () => {
+  // Sandbox the config dir. This used to write straight into the real
+  // ~/.whatsappman, which meant it (a) polluted the user's own config dir and
+  // (b) only passed on a machine that had already run whatsappman — on a fresh
+  // one it died with ENOENT because the directory did not exist yet. CI found
+  // it; every local run had been quietly relying on leftover state.
+  const os = await import('node:os');
+  const p = await import('node:path');
+  const { readFileSync, rmSync, existsSync, mkdtempSync } = await import('node:fs');
+  const sandbox = mkdtempSync(p.join(os.tmpdir(), 'wam-qrpng-'));
+  const saved = process.env.WHATSAPPMAN_DIR;
+  process.env.WHATSAPPMAN_DIR = sandbox;
+
   const { qrImagePath } = await import('../src/cli/link.js');
-  const { readFileSync, rmSync, existsSync } = await import('node:fs');
+  const { ensureBaseDir } = await import('../src/config/paths.js');
+  ensureBaseDir(); // the 0700 dir the painter would create for itself
   const file = qrImagePath('evaltest');
   try {
     await QRCode.toFile(file, PAYLOAD, { type: 'png', errorCorrectionLevel: 'L', margin: 2, width: 512 });
@@ -213,6 +226,9 @@ test('the PNG QR is real, non-trivial image data at a scannable size', async () 
     assert.equal(width, height, 'a QR must be square');
   } finally {
     if (existsSync(file)) rmSync(file);
+    if (saved === undefined) delete process.env.WHATSAPPMAN_DIR;
+    else process.env.WHATSAPPMAN_DIR = saved;
+    rmSync(sandbox, { recursive: true, force: true });
   }
 });
 
