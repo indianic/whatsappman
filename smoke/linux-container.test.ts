@@ -129,6 +129,9 @@ test(
       // The SAME assertions CI runs on ubuntu/macos/windows — one list, so the
       // container and the three CI platforms can never drift apart.
       copyFileSync(path.join(ROOT, 'smoke/cli-assertions.mjs'), path.join(ctx, 'cli-assertions.mjs'));
+      // Exercises every command, including stop/restart/reset — safe only here,
+      // where the whole machine is disposable.
+      copyFileSync(path.join(ROOT, 'smoke/all-commands.mjs'), path.join(ctx, 'all-commands.mjs'));
 
       // No per-run `docker build`: mount this run's two files into the cached
       // base and install there. The image layer that used to be invalidated by
@@ -147,7 +150,7 @@ test(
           BASE_TAG,
           'sh',
           '-c',
-          'npm install -g /work/pkg.tgz --no-fund --no-audit >/dev/null 2>&1 && node /work/cli-assertions.mjs',
+          'npm install -g /work/pkg.tgz --no-fund --no-audit >/dev/null 2>&1 && node /work/cli-assertions.mjs && node /work/all-commands.mjs',
         ],
         { encoding: 'utf8', stdio: 'pipe' },
       );
