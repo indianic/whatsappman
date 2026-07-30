@@ -354,7 +354,9 @@ export async function runDaemon(): Promise<void> {
       (params) => {
         const label = normalizeLabel((params as { label: string }).label);
         if (!listSessionLabels().includes(label)) {
-          throw new WhatsAppManError(ErrorCode.SESSION_NOT_FOUND, `no session "${label}"`);
+          throw new WhatsAppManError(ErrorCode.SESSION_NOT_FOUND, `no session "${label}"`, [
+            `linked numbers: ${listSessionLabels().join(', ') || '(none — run: whatsappman link)'}`,
+          ]);
         }
         const cur = readState();
         if (cur) writeState({ ...cur, defaultSession: label });

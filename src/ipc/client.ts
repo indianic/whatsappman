@@ -35,7 +35,14 @@ export function request<T = unknown>(method: Method, params?: unknown): Promise<
     };
 
     const timer = setTimeout(() => {
-      done(() => reject(new WhatsAppManError(ErrorCode.DAEMON_DOWN, 'daemon did not respond in time')));
+      done(() =>
+        reject(
+          new WhatsAppManError(ErrorCode.DAEMON_DOWN, 'daemon did not respond in time', [
+            'the daemon is running but wedged — run: whatsappman restart',
+            'if it repeats, check: whatsappman logs --err',
+          ]),
+        ),
+      );
     }, REQUEST_TIMEOUT_MS);
 
     sock.setEncoding('utf8');
@@ -93,7 +100,14 @@ export function request<T = unknown>(method: Method, params?: unknown): Promise<
     });
 
     sock.on('close', () => {
-      done(() => reject(new WhatsAppManError(ErrorCode.DAEMON_DOWN, 'connection closed before a response')));
+      done(() =>
+        reject(
+          new WhatsAppManError(ErrorCode.DAEMON_DOWN, 'connection closed before a response', [
+            'the daemon closed the socket mid-request — run: whatsappman restart',
+            'if it repeats, check: whatsappman logs --err',
+          ]),
+        ),
+      );
     });
   });
 }
