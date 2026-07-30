@@ -25,8 +25,8 @@
     "test": "tsx --test test/*.test.ts",
     "eval": "tsx --test eval/*.eval.ts",
     "verify": "npm run lint && npm run typecheck && npm run build && npm test && npm run eval",
-    "eval:docker": "WAM_DOCKER=1 tsx --test eval/docker-linux.eval.ts",
-    "eval:docker:clean": "docker rmi -f $(docker images -q whatsappman-smoke-base) 2>/dev/null; docker volume rm -f whatsappman-smoke-npm-cache 2>/dev/null; echo cleaned"
+    "smoke": "tsx --test smoke/*.test.ts",
+    "smoke:clean": "docker rmi -f $(docker images -q whatsappman-smoke-base) 2>/dev/null; docker volume rm -f whatsappman-smoke-npm-cache 2>/dev/null; echo cleaned"
   },
   "engines": {
     "node": ">=18"

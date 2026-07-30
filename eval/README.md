@@ -2,10 +2,27 @@
 
 `npm run eval`
 
-These evaluate the **tool surface an LLM is handed** — not the internals the
-unit tests in `test/` cover. They are deterministic and offline: no model is
-called, no network, no daemon, no WhatsApp session. They run in CI in under a
-second.
+These evaluate **the surface we hand someone — a model or a person — and the
+claims we make about it**. Not the internals the unit tests in `test/` cover.
+They are deterministic and offline: no model is called, no network, no daemon,
+no WhatsApp session. They run in CI in under a second.
+
+## Three tiers, three different questions
+
+| Tier | Command | Question it answers | Constraints |
+|---|---|---|---|
+| `test/` | `npm test` | Does this function compute the right value? | Offline, fast, no daemon |
+| `eval/` | `npm run eval` | Is the surface we expose still correct, safe and self-consistent — and are our stated claims still true? | Offline, fast, no daemon, **static rubrics only** |
+| `smoke/` | `npm run smoke` | Does the **actual published artifact** install and work on a real OS? | Needs network, Docker and a running daemon — so it sits **outside** `npm run verify` |
+
+The boundary is not cosmetic. `smoke/` was briefly written as an eval, which
+broke all three of this suite's rules at once: it pulls images over the network,
+starts a daemon, and takes ~9s rather than under a second. It answers a question
+neither of the other tiers can — *does the real tarball work on a real Linux
+box* — so it earns its own tier rather than diluting what "eval" means here. The
+same assertions run natively on ubuntu, macOS **and Windows** in
+`.github/workflows/ci.yml`, which is the only way to cover Windows at all
+(Windows containers require a Windows host).
 
 ## Why these exist separately from `test/`
 
@@ -30,6 +47,9 @@ Two real failures motivated them:
 | `safety-invariants.eval.ts` | The draft → preview → confirm gate is real. No tool reaches the daemon's raw `send_text`/`send_bulk`; `confirm_send` is the only dispatcher and accepts **nothing but** a `draftId`; only `draft_message` accepts message content. |
 | `tool-surface.eval.ts` | Schema quality that decides tool-calling accuracy: closed objects (`additionalProperties: false`), every param described and typed, no two tools reading alike, every `required` field declared, every method in the IPC allowlist, plus a drift guard on the tool set. |
 | `docs-consistency.eval.ts` | Countable doc claims stay true — the README badge and prose tool counts, `docs/FEATURES.md`, the "no raw send tool" promise (present in docs *and* true in code), and that no retired `@indianic` / `npm.indianic.in` reference creeps back into user-facing install docs. |
+| `use-cases-consistency.eval.ts` | `docs/USE-CASES.md` promises every command and flag in it was checked against the real parser. Derives the actual surface from `src/cli` and fails on the first token the CLI would not recognise, so 250 documented cases cannot drift into fiction. |
+| `cli-surface.eval.ts` | The **human** CLI stays coherent: every command appears in `whatsappman help` *and* in `docs/CLI.md`, no file hand-rolls a `readline` prompt (they all go through `prompts.ts`, so cancelling always works and never counts as consent), and the destructive commands really do use the shared confirmation. Found `send-bulk` undocumented on its first run. |
+| `ipc-parity.eval.ts` | The IPC contract's three halves agree: the `METHODS` allowlist, the per-method params schema, and the daemon's handler map. A method in one but not another fails only at runtime — which is exactly how `rename` once reached a user as `malformed request`. Also asserts no state-changing method accepts empty params. |
 
 ## What they do *not* prove
 

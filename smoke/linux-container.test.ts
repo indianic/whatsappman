@@ -10,6 +10,14 @@ import { fileURLToPath } from 'node:url';
 /**
  * Full-cycle smoke test on Linux, in a throwaway container.
  *
+ * TIER: smoke — not a unit test, not an eval. `test/` asks whether a function
+ * computes the right value; `eval/` asks whether the surface we hand a model or
+ * a user is correct and self-consistent, offline and in under a second. This
+ * asks the third question neither can: does the ACTUAL published artifact
+ * install and work on a real operating system? It needs network, a container
+ * runtime and a running daemon, so it deliberately lives outside `npm run
+ * verify` and runs as `npm run smoke`.
+ *
  * Every other test here imports TypeScript from src/. That can never catch the
  * failures that only exist for a real user on a real machine: a file missing
  * from the published package, a POSIX-only assumption, the wrong autostart
@@ -17,11 +25,10 @@ import { fileURLToPath } from 'node:url';
  * macOS. This installs the ACTUAL npm tarball into a clean Linux image and
  * drives the CLI end to end.
  *
- * OPT-IN: it needs Docker, so `npm run eval` stays fast and works on machines
- * without it (the test reports as skipped). Run it with:
+ * OPT-IN: it needs Docker, and reports as skipped without it. Run it with:
  *
- *   npm run eval:docker         # ~9s warm, ~25s the first time
- *   npm run eval:docker:clean   # drop the cached base image + npm cache
+ *   npm run smoke         # ~9s warm, ~25s the first time
+ *   npm run smoke:clean   # drop the cached base image + npm cache
  *
  * WHAT IS CACHED, AND WHY. There is no per-run `docker build` at all. A base
  * image of OS + node + git is built once and reused; this run's tarball and
@@ -32,7 +39,7 @@ import { fileURLToPath } from 'node:url';
  *
  * WHAT IS STILL DISPOSED. The run container (`--rm`) and the build context, in
  * a finally block, on success and failure alike. Only the two cache artifacts
- * survive, and `eval:docker:clean` removes those on demand.
+ * survive, and `npm run smoke:clean` removes those on demand.
  *
  * NOT covered: Windows. Windows containers require a Windows host, so no amount
  * of Docker on macOS or Linux can substitute for testing there — that is what
@@ -40,7 +47,6 @@ import { fileURLToPath } from 'node:url';
  */
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const ENABLED = process.env.WAM_DOCKER === '1';
 
 function dockerAvailable(): boolean {
   try {
@@ -103,9 +109,10 @@ function ensureBase(): { built: boolean } {
 
 test(
   'the published package installs and works end-to-end on Linux',
-  { skip: !ENABLED ? 'set WAM_DOCKER=1 (npm run eval:docker) to run' : false },
+  // Skips rather than fails without Docker: this tier is explicitly opt-in, and
+  // a missing container runtime is not a defect in the product.
+  { skip: !dockerAvailable() ? 'Docker is not available — skipping the container smoke test' : false },
   () => {
-    assert.ok(dockerAvailable(), 'Docker is required for this eval but is not reachable');
 
     const { built } = ensureBase();
     console.log(built ? `built base image ${BASE_TAG}` : `reusing cached base image ${BASE_TAG}`);
@@ -121,7 +128,7 @@ test(
       copyFileSync(path.join(ctx, tgz), path.join(ctx, 'pkg.tgz'));
       // The SAME assertions CI runs on ubuntu/macos/windows — one list, so the
       // container and the three CI platforms can never drift apart.
-      copyFileSync(path.join(ROOT, 'eval/smoke-cli.mjs'), path.join(ctx, 'smoke-cli.mjs'));
+      copyFileSync(path.join(ROOT, 'smoke/cli-assertions.mjs'), path.join(ctx, 'cli-assertions.mjs'));
 
       // No per-run `docker build`: mount this run's two files into the cached
       // base and install there. The image layer that used to be invalidated by
@@ -140,7 +147,7 @@ test(
           BASE_TAG,
           'sh',
           '-c',
-          'npm install -g /work/pkg.tgz --no-fund --no-audit >/dev/null 2>&1 && node /work/smoke-cli.mjs',
+          'npm install -g /work/pkg.tgz --no-fund --no-audit >/dev/null 2>&1 && node /work/cli-assertions.mjs',
         ],
         { encoding: 'utf8', stdio: 'pipe' },
       );
@@ -151,7 +158,7 @@ test(
     } finally {
       // The run container is disposed by --rm and the build context by path.
       // The base image and npm cache are deliberately KEPT — they are the cache.
-      // `npm run eval:docker:clean` removes them when you want the space back.
+      // `npm run smoke:clean` removes them when you want the space back.
       rmSync(ctx, { recursive: true, force: true });
     }
 

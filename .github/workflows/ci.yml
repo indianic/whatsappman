@@ -77,4 +77,4 @@ jobs:
 
       - name: Smoke test the installed CLI
         shell: bash
-        run: node eval/smoke-cli.mjs
+        run: node smoke/cli-assertions.mjs
