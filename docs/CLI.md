@@ -37,7 +37,7 @@ what the OS startup job invokes; it's not something you normally type (use
 | `whatsappman restart` | Stop then start. |
 | `whatsappman status` | The `@clack/prompts` diamond tree: daemon up? (pid, uptime, host), every number with its status, default marker, pending-scheduled count. Same data as the `get_status` MCP tool. |
 | `whatsappman logs [-f] [--err]` | Print (or `-f` follow) the daemon log at `~/.whatsappman/logs/daemon.out.log` (`--err` for stderr). |
-| `whatsappman doctor` | Pre-flight checks, distinct from `status` (which reports configured state): is the daemon socket reachable, socket/creds perms correct, Node ≥18, is `node`/`npx` on the startup job's PATH (catches the launchd/systemd bare-PATH gotcha), and each session's live connection. |
+| `whatsappman doctor [--fix]` | Pre-flight checks, distinct from `status` (which reports configured state): **dependencies** (Node ≥18, `node`/`npx` on the startup job's PATH — catching the launchd/systemd bare-PATH gotcha — plus **git** and `npm`), socket reachability, socket/creds perms, and each session's live connection. `--fix` prints the exact install command for whatever is missing, chosen for your platform. It **prints, never runs**: installing git needs administrator rights, and a CLI that silently `sudo`s to fix its own prerequisite is doing something you didn't ask for. |
 
 ### Numbers (multiple, each a session)
 

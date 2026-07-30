@@ -249,7 +249,7 @@ function printHelp(): void {
   intro('whatsappman — commands');
   section('setup');
   row('init             install daemon + link a number + register (one-shot)');
-  row('doctor           environment + daemon pre-flight checks');
+  row('doctor [--fix]   environment + dependency + daemon pre-flight checks');
   row('register [--write]   print/write MCP config (--tools claude,cursor,gemini,windsurf,codex)');
   section('daemon');
   row('daemon install [--print] / uninstall   OS autostart (launchd/systemd/…)');
@@ -342,7 +342,7 @@ export async function cliMain(args: string[]): Promise<number> {
     }
 
     case 'doctor':
-      return runDoctor();
+      return runDoctor(hasFlag(args, '--fix'));
 
     case 'register': {
       const tools = takeFlag(args, '--tools');

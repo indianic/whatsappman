@@ -4,6 +4,13 @@ All notable changes to `@integratex/whatsappman` are documented here.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-07-30
+
+- **feat(doctor): a dependencies section, and `doctor --fix`.** `whatsappman update` shells out to `npm install -g`, which needs **git** — Baileys pulls `libsignal` from a git URL. So a missing git does not break a *running* install; it breaks the **next update**, with a bare `npm error syscall spawn git`. `doctor` never looked for git, so nothing warned you until that failed. It now reports git and npm alongside the existing node/npx checks, states git's role explicitly, and `--fix` prints the exact install command for the detected platform (`xcode-select --install` / `winget install --id Git.Git -e` / `sudo apt install git`).
+  - It **prints, never runs**: installing git needs administrator rights, and a CLI that silently `sudo`-installs its own prerequisite is acting on a machine it does not own.
+  - `installHint` is pure and exported, so the Windows and Linux branches — unverifiable from a Mac — are pinned by tests, including that no platform is ever handed another's package manager.
+  - **This does not fix the first install.** That failure happens inside npm before this CLI exists, and nothing shipped in the package can catch it; npm `overrides` cannot help either (verified: they apply only to the root project, so ours are ignored when someone installs us as a dependency). The real fix is Baileys 7, which takes `libsignal` from the registry, once it leaves release-candidate status.
+
 ## [0.4.1] - 2026-07-30
 
 - fix(readme): serve the package-page images from GitHub's CDN instead of the self-hosted site. The npm page for 0.4.0 rendered no images. Neither the URLs nor the registry's stored README were wrong — the images were simply unreachable in time: `whatsappman.indianic.dev` was answering with a **20.7s** TTFB (18–26s site-wide), far past any image proxy's patience. Not the app's fault either; measured on the server itself, our Node process served the same PNG from `127.0.0.1` in **1.4ms** — the host was CPU-starved by an unrelated tenant, which slowed the reverse proxy shared by every site on it. The images already lived in `docs/images/`, so pointing the README at `raw.githubusercontent.com` needed no new assets and cut the fetch to **0.4s**, while removing a self-hosted single point of failure from the package page of every future release. Code unchanged — this release exists only because a version's README is fixed at publish time and cannot be updated in place.
