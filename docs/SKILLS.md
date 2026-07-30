@@ -188,3 +188,27 @@ closed by an outro line.
 
 `get_status` (the MCP tool) returns the same `collectStatus()` data as JSON;
 the diamond tree is only for the CLI, where a human is looking at a terminal.
+
+## What is deliberately *not* a tool
+
+The MCP surface has stayed at **12 tools** while the CLI grew several commands
+in 0.4.x. That is a decision, not an oversight — the split follows one rule:
+
+> Anything interactive, destructive, or capable of surprising you belongs to the
+> human at a terminal, not to something an LLM session could be talked into
+> calling.
+
+| CLI command | Why it has no tool |
+|---|---|
+| `link` / `relink` | Displays a QR a human must scan with their phone. There is no conversational way to do it, and it is the one moment credentials are created. |
+| `delete` / `reset` | Destroys credentials. A confirmation an AI can issue is not a confirmation. |
+| `rename` | Moves a directory holding live WhatsApp credentials. Same reasoning as delete. |
+| `presence` | Sends a "typing…" signal to a recipient. Harmless, but it is an outbound action with no content to preview — nothing for the draft→confirm gate to show you, so the gate could not protect you. |
+| `run` | Executes an arbitrary shell command. Exposing that over MCP would hand an assistant remote code execution on your machine, whatever the message-sending gate says. |
+| `summary` | Reads your AI transcripts. Giving a model a tool that reads its own past conversations — including other projects' — is a data-exfiltration shape, not a feature. It stays something you run and choose to send. |
+| `me` | Only a convenience wrapper; the AI path already has `draft_message`. |
+
+Adding a tool is therefore never just plumbing: `eval/safety-invariants.eval.ts`
+pins that no tool reaches the daemon's raw `send_text`/`send_bulk`, that
+`confirm_send` accepts nothing but a `draftId`, and that only `draft_message`
+accepts message content. Any new tool has to survive those assertions first.

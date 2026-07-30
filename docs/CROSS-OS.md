@@ -10,6 +10,39 @@ This mirrors mailman's `docs/CROSS-OS.md` stance: written cross-platform from
 day one, but each OS earns a **✅ verified** badge only after a real smoke test
 on that OS.
 
+## How verification works now (since 0.4.2)
+
+Platform support is no longer argued about — it is **measured on every push**.
+`.github/workflows/ci.yml` runs a matrix over `ubuntu-latest`, `macos-latest`
+and `windows-latest` that **packs the real npm tarball, installs it globally,
+and drives the installed CLI** through `smoke/cli-assertions.mjs`. The same
+assertion list runs inside a throwaway Linux container via `npm run smoke`, so
+the container and the three CI platforms can never drift apart.
+
+Each platform asserts it picks *its own* autostart mechanism **and rejects the
+others'** — Linux must never select launchd, Windows must never select systemd.
+The suite also covers exit-code propagation from `run`, graceful behaviour on a
+machine with no state, that no prompt blocks without a TTY, and that the daemon
+**starts and stops**.
+
+Windows containers require a Windows *host*, so no amount of Docker on a Mac or
+a Linux box substitutes for the `windows-latest` runner. That runner is the only
+reason the Windows column below says verified rather than coded.
+
+**Two Windows-only bugs were found and fixed this way**, both invisible on
+POSIX and total on Windows:
+
+- `whatsappman run` spawned multi-argument commands with no shell to preserve
+  quoting exactly. On Windows `npm`/`npx`/`yarn`/`tsc` are `.cmd` shims that
+  CreateProcess cannot execute, so `run -- npm test` — the most likely thing
+  anyone types — died with `ENOENT`.
+- `whatsappman summary` folded only `/` and `.` into `-` when resolving the
+  transcript folder, so a Windows cwd (`C:\Users\k\App`) matched nothing and the
+  digest silently reported no sessions.
+
+Both were fixed by reasoning about win32 semantics *before* the runner existed —
+and only the runner turned that reasoning into evidence.
+
 ## Support matrix
 
 | Concern | macOS | Windows | Ubuntu / Xubuntu / Debian / Fedora | Alpine / minimal servers / containers |
@@ -19,15 +52,30 @@ on that OS.
 | **Daemon auto-start** | launchd | Task Scheduler | systemd `--user` unit | OpenRC service, or `nohup`+pidfile fallback |
 | **Cred encryption (optional, keytar)** | Keychain | Credential Vault | libsecret / gnome-keyring | often unavailable → documented fallback |
 | **Desktop notifications (default-on, best-effort)** | `osascript` (shows as **Script Editor** — permission caveat) | PowerShell WinRT toast | `notify-send` (needs libnotify + a desktop session) | none on headless → silent no-op |
-| **Verified on real hardware** | ✅ send + link + daemon + **notification banner** | pending | pending | pending |
+| **Install + CLI + daemon lifecycle** | ✅ CI, every push | ✅ CI, every push | ✅ CI, every push | ✅ `npm run smoke` (container) |
+| **Verified on real hardware** | ✅ send + link + daemon + **notification banner** | CI runner only — no live WhatsApp send yet | CI runner + container | container only |
 
 Notifications never block or fail a send — a missing mechanism or denied
 permission silently no-ops. See the README's *Desktop notifications* section
 for the mechanism details, how to disable, and the **macOS Script Editor**
 permission caveat (System Settings → Notifications → Script Editor).
 
-Everything is "coded / pending verification" — nothing has been built or run
-yet (planning stage). Verification badges get filled in as each OS is tested.
+**What the CI badge does and does not cover.** It proves the published package
+installs and the CLI and daemon behave on that OS. It does **not** prove a live
+WhatsApp send there — that needs a real linked number, which a CI runner cannot
+have. Real Baileys socket behaviour (throttling, reconnects, bans) is still only
+learnable in production, on any platform.
+
+## Prerequisites (all platforms)
+
+**Node ≥18 and `git`.** git is not optional: Baileys pulls `libsignal` from a
+git URL, so npm shells out to git during install — and `whatsappman update`
+calls `npm install -g`, so a missing git breaks the *next update* with a bare
+`npm error syscall spawn git`. `whatsappman doctor` reports both, and
+`doctor --fix` prints the install command for the detected platform. Windows in
+particular does not ship git by default.
+
+No GitHub account or SSH key is involved; upstream declares `git+https`.
 
 ## Layer 1 — Core: identical everywhere
 

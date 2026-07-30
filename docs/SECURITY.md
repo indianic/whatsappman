@@ -130,8 +130,29 @@ exposure). Controls, all enforced **in the daemon** (not just the client):
   → `RATE_LIMITED`, so a runaway loop or rogue caller can't blast the number
   into a ban. Sized so normal interactive/bulk use never trips it;
 - `settings.defaultDelayMs` between bulk messages + `settings.maxBulkRecipients`
-  cap → `BULK_LIMIT_EXCEEDED`.
-The README carries a prominent caution.
+  cap → `BULK_LIMIT_EXCEEDED`. The cap **refuses the whole send** rather than
+  trimming to the first N, so a 1000-number list fails loudly instead of
+  half-succeeding;
+- the inter-send delay is **jittered ±25%** (`withJitter`). A batch firing at
+  exactly 2000ms is machine-obvious, and mechanical regularity is precisely what
+  automated-behaviour detection looks for;
+- a **circuit breaker** (`BulkGuard`, 3 consecutive failures). This is the one
+  that matters most. The send loop used to catch every error and carry on, so if
+  WhatsApp began rejecting sends — which is exactly what throttling and an early
+  block look like from inside — it would keep hammering through all 100
+  recipients. That is the behaviour most likely to turn a warning into a ban. It
+  now stops, reports the remainder as `skipped` (never contacted, so the result
+  cannot imply otherwise), and raises a desktop notification. Isolated failures
+  reset the counter: one dead number in a list must not stop a batch.
+
+The breaker lives in a small class rather than inline in the loop specifically
+so the decision protecting the number is unit-testable, instead of only
+reachable through a live socket.
+
+The README carries a prominent caution. **None of this makes WhatsApp a
+bulk-marketing channel** — the guards keep ordinary multi-recipient use (an
+on-call page, a team broadcast) from *looking* automated. Sending unsolicited
+messages at volume will get the number banned regardless.
 
 ## Process & DevOps hardening
 
@@ -172,6 +193,40 @@ access. Controls:
 - `sent.jsonl` stores send **metadata** (timestamp, session, recipient JID,
   kind, messageId) — never inbound content (there is no inbound handling) —
   `0600`, size-capped/rotated.
+- The `--image` pairing QR is written through an explicit `0600` fd inside the
+  `0700` config dir — never the shared tmpdir, where a predictable name would
+  let any local user read it and become a linked device — and removed when
+  pairing ends, including on Ctrl-C.
+
+### `whatsappman summary` reads your AI transcripts
+
+`summary` is the one feature that reads data it did not create: Claude Code
+session transcripts under `~/.claude/projects` and `~/.iclaude/projects`. Those
+files contain **every prompt and reply you have typed**, some of it secret — and
+the digest can be sent over WhatsApp. Two rules make that safe:
+
+- **Metadata only.** The digest carries the session's own generated title,
+  counts, durations, git branch and file *names*. No prompt text, no reply text,
+  no file contents. `test/digest.test.ts` plants a fake AWS key in a synthetic
+  transcript and asserts it reaches neither the digest object nor the rendered
+  message.
+- **No model call.** Summarising is arithmetic over the transcript, not an LLM
+  round-trip. Shipping a digest that phoned an API would break the "no
+  third-party API, runs on your machine" promise the rest of this document
+  rests on.
+
+Sending is still your decision: `summary` prints locally and only transmits
+when you pass `--to`.
+
+## Destructive commands: cancel is never consent
+
+`delete` and `reset` destroy credentials. Both prompt through one layer
+(`src/cli/prompts.ts`) that defaults the confirmation to **No** and treats
+Esc/Ctrl-C as **No** — the safe answer is the one you get by panicking out of
+the prompt. Non-interactive shells cannot be prompted at all, so there they
+still require an explicit `--yes` rather than proceeding. `eval/cli-surface.eval.ts`
+fails the build if a destructive command stops using that helper, or if any file
+hand-rolls its own prompt.
 
 ## Update security
 

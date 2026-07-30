@@ -32,10 +32,15 @@ Ask your AI in plain English. WhatsAppMan **drafts, previews, and only sends on 
 - **Draft → preview → confirm** safety — nothing sends until you approve (`confirm_send` won't dispatch without an explicit confirmation); there's **no raw "send" tool**, so an AI can never send an unpreviewed message
 - **Multiple linked numbers**, each paired by QR, with per-send `--from` routing
 - **Scheduled sends** held by an always-on local daemon — they fire even if your editor is closed and survive restarts
-- Markdown → WhatsApp formatting, smart recipient resolution (name / phone / group, validated against WhatsApp), bulk send (throttled + capped), local send log
+- Markdown → WhatsApp formatting, smart recipient resolution (name / phone / group, validated against WhatsApp), local send log
+- **Bulk send with four anti-ban guards** — a 100-recipient cap, a jittered delay between sends, a per-number rate limit, and a **circuit breaker that stops the batch after 3 consecutive failures** (a run of failures is what throttling looks like from inside; pushing on is what turns a warning into a ban)
+- **`whatsappman run -- <command>`** — run anything, then get told on WhatsApp how it went: ✅/❌, duration, exit code, and on failure the tail of the output. The command's exit code is passed through, so it drops into an existing script or CI step
+- **`whatsappman summary`** — a digest of your AI coding sessions: what you worked on, for how long, across which projects. Built from local transcripts with **no model call**, carrying titles, counts and durations only — never message content
 - **No third-party API, no server, no database** — your machine becomes a WhatsApp "linked device" via [Baileys](https://github.com/WhiskeySockets/Baileys)
 - Machine-bound credentials, desktop notifications, pre-send health check (never a false "sent")
-- Installs into **Claude Code, Cursor, Gemini CLI, Windsurf, Codex** (`whatsappman register`) — cross-platform Win/Mac/Linux
+- Installs into **Claude Code, Cursor, Gemini CLI, Windsurf, Codex** (`whatsappman register`)
+- **macOS · Windows · Linux** — each proven on every release by a CI matrix that installs the real published tarball and drives the CLI, not just claimed
+- **Every command asks.** Run `default`, `delete`, `rename`, `relink`, `scheduled cancel`, `settings set` or `presence` without a value and you get an ↑/↓ menu instead of a `usage:` line. Esc always cancels, and on destructive prompts a cancel counts as *no*
 - 12 MCP tools, exposed to your AI over MCP
 
 ![Everything WhatsApp, hands-free — send anything, multiple numbers, scheduled sends, smart recipient resolution, send history, stays connected](https://raw.githubusercontent.com/indianic/whatsappman/main/docs/images/features.png)
@@ -65,21 +70,34 @@ whatsappman init
 # Register with AI editors later
 whatsappman register --write --tools claude,cursor,gemini,windsurf,codex
 
-# Link & manage numbers
+# Link & manage numbers  (omit the label on any of these and it lists your
+# numbers so you can pick — no remembering exact names)
 whatsappman link --label work        # add another number (scan a QR)
 whatsappman numbers                  # list linked numbers + status
-whatsappman default work             # pick the default number for sends
+whatsappman default                  # ↑/↓ pick the default number
+whatsappman rename work office       # keeps creds + history
 whatsappman relink work              # re-pair an expired number
 
 # Diagnostics & current state
-whatsappman doctor
+whatsappman doctor                   # Node, git, daemon, perms, connections
+whatsappman doctor --fix             # print how to install anything missing
 whatsappman status
 
 # Send from the terminal (the AI path is draft → confirm)
 whatsappman send "+91 99•••• 3349" "Build passed ✅"
+whatsappman me "review the PR"       # message yourself
+
+# Run a job and get told how it went (✅/❌, duration, exit code, error tail)
+whatsappman run --to "Me" -- npm test
+whatsappman run --on-fail --to "DevOps" -- ./deploy.sh
+
+# A digest of your AI coding sessions — no model call, no message content
+whatsappman summary                          # this project
+whatsappman summary --all --days 1 --to "Me" # today, every project
 
 # Scheduled sends & history
 whatsappman scheduled
+whatsappman scheduled cancel         # pick from what is pending
 whatsappman recent
 
 # Settings & self-update
@@ -130,10 +148,11 @@ Baileys is an unofficial reverse-engineering of WhatsApp Web — great for perso
 ## Docs
 
 - [docs/FEATURES.md](docs/FEATURES.md) — features, flow & how it works (non-technical + technical)
-- [CONTEXT.md](CONTEXT.md) — condensed overview, status, key decisions
-- [docs/PLAN.md](docs/PLAN.md) — full architecture · [docs/SKILLS.md](docs/SKILLS.md) — MCP tools · [docs/CLI.md](docs/CLI.md) — CLI commands
+- [docs/CLI.md](docs/CLI.md) — every CLI command · [docs/SKILLS.md](docs/SKILLS.md) — the 12 MCP tools your AI can call
+- [docs/USE-CASES.md](docs/USE-CASES.md) — 250+ documented use cases, honestly labelled by what ships today
 - [docs/SECURITY.md](docs/SECURITY.md) — threat model & hardening · [docs/CROSS-OS.md](docs/CROSS-OS.md) — platform matrix
-- [docs/STANDARDS.md](docs/STANDARDS.md) — conventions · [docs/CHECKLIST.md](docs/CHECKLIST.md) — build log · [CHANGELOG.md](CHANGELOG.md) — releases
+- [eval/README.md](eval/README.md) — the three test tiers and the invariants keeping the send gate honest
+- [CHANGELOG.md](CHANGELOG.md) — releases
 
 ## Acknowledgements
 
@@ -142,6 +161,7 @@ whatsappman stands on [**Baileys**](https://github.com/WhiskeySockets/Baileys) �
 Thanks also to:
 
 - [**@modelcontextprotocol/sdk**](https://github.com/modelcontextprotocol/typescript-sdk) — Anthropic's TypeScript SDK for the Model Context Protocol, which is what lets your AI talk to this thing at all.
+- [**@clack/prompts**](https://github.com/bombshell-dev/clack) — the arrow-key menus, text inputs and confirmations behind every interactive command.
 - [**pino**](https://github.com/pinojs/pino), [**qrcode**](https://github.com/soldair/node-qrcode), [**zod**](https://github.com/colinhacks/zod), [**open**](https://github.com/sindresorhus/open), [**picocolors**](https://github.com/alexeyraspopov/picocolors), and [**mime-types**](https://github.com/jshttp/mime-types) — small, sharp dependencies that each do one job well.
 
 Not affiliated with, endorsed by, or connected to WhatsApp or Meta.

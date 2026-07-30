@@ -190,6 +190,31 @@ login. So WhatsAppMan splits into two pieces:
 - **Send history** (`recent`), **settings** (`settings get/set`).
 - **TTY guard** — interactive commands refuse to run (with a clear message) in a
   non-terminal shell instead of hanging.
+- **Every command asks** — `default`, `delete`, `rename`, `relink`, `reconnect`,
+  `disconnect`, `scheduled cancel`, `settings set` and `presence` run without a
+  value show an ↑/↓ menu instead of a `usage:` line. One layer
+  (`src/cli/prompts.ts`) guarantees Esc always cancels, that **cancel never
+  counts as consent** on destructive prompts, and that a non-TTY fails fast
+  rather than blocking on a menu nobody can answer.
+
+### Daily drivers (0.4.x)
+- **`run -- <command>`** — run anything, then get told on WhatsApp how it went:
+  ✅/❌, duration, exit code, and on failure the tail of the output. The exit
+  code is propagated, so it drops into an existing script or CI step. `--on-fail`
+  notifies only on breakage. This covers the highest-traffic patterns in
+  USE-CASES.md *including the failure branch* that hand-wired
+  `&& whatsappman send …` always misses.
+- **`summary`** — a digest of your AI coding sessions: what you worked on, for
+  how long, across which projects. Built from local Claude Code transcripts with
+  **no model call**, carrying titles, counts and durations only — never message
+  content. `--to` sends it (the daily standup, written for you).
+- **`me <text>`** — message yourself; resolves the sending number's own phone.
+- **`rename`** — rename a number keeping creds + history, carrying the default
+  pointer over and reconnecting without a QR.
+- **`presence`** — a typing/online indicator. A status signal, not a message: no
+  content is delivered and nothing is written to the audit log.
+- **`doctor --fix`** — reports Node, **git**, npm, daemon, perms and connections,
+  and prints the platform-correct install command for anything missing.
 
 ## The MCP tools (what Claude can call)
 
@@ -215,14 +240,19 @@ message. Anything destructive (delete, disconnect, relink) or mass (bulk) is
 ## The CLI commands (what you type)
 
 ```
-Setup:    init · doctor · register · daemon install|uninstall
+Setup:    init · doctor [--fix] · register · daemon install|uninstall
 Daemon:   start · stop · restart · status
-Numbers:  link · relink · reconnect · disconnect · delete · numbers · status <label> · default
-Send:     send · send-bulk
-Later:    scheduled [cancel <id>] · recent
+Numbers:  link · relink · reconnect · disconnect · rename · delete · numbers
+          status [<label>] · default
+Send:     send · send-bulk · presence · me
+Daily:    run -- <command> · summary
+Later:    scheduled [cancel] · recent
 Config:   settings get|set · update (upgrade) · reset
 Help:     help · examples · version
 ```
+
+Commands taking a `<label>` also accept it as a menu: omit the value and they
+list your numbers to pick from. See [CLI.md](CLI.md) for every flag.
 
 ## Key flows (step by step)
 
