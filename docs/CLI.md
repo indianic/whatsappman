@@ -56,7 +56,7 @@ what the OS startup job invokes; it's not something you normally type (use
 
 | Command | Purpose |
 |---|---|
-| `whatsappman send <to> <text> [--from <label>]` | Quick one-off text send from the terminal. Still shows a preview and asks to confirm (unless `--yes`). For images/docs/locations, the MCP tools or `--kind`/`--path` flags cover it. |
+| `whatsappman send <to> <text> [--from <label>]` | Quick one-off text send from the terminal. **Sends directly — no preview, no prompt:** typing the command *is* the human confirmation, which is what makes it safe to use unattended in cron, CI and webhooks. (The AI-facing MCP path is the gated one: `draft_message` → `confirm_send`, with no raw send tool.) `--yes` is accepted and ignored, so it can never leak into the message body. `--raw` skips the Markdown→WhatsApp conversion. For images/docs/locations, use the `--kind`/`--path` flags below. |
 | `whatsappman scheduled list` | Read-only mirror of the `list_scheduled` MCP tool — pending/sent/failed scheduled sends. |
 | `whatsappman recent [--limit N]` | Tail of `sent.jsonl` — what's been sent. |
 
