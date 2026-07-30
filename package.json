@@ -1,6 +1,6 @@
 {
   "name": "@integratex/whatsappman",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "MCP server + CLI to send WhatsApp messages (text, image, document, location, contact) from any Claude CLI session, via a Baileys-backed always-on local daemon — multi-number, draft/confirm, no third-party API, no server, no database. macOS, Linux, Windows.",
   "author": "kalpesh",
   "type": "module",

@@ -4,6 +4,48 @@ All notable changes to `@integratex/whatsappman` are documented here.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-30
+
+### New commands
+
+- **feat(cli): `whatsappman summary`** — a factual digest of your AI coding sessions: what you worked on, for how long, across which projects. Reads the Claude Code transcripts already on disk (`~/.claude/projects`, `~/.iclaude/projects`), defaults to the current project's latest session, and widens with `--all` / `--project <name>` / `--days N` / `--last N`. `--to` sends it over WhatsApp — the daily standup, written for you. **No model is called** (arithmetic, not an LLM, so the "no third-party API" promise holds) and it carries **metadata only** — session titles, counts, durations, branch, file *names* — never prompt or reply text. A transcript holds secrets; a digest you send must not, and a test plants a fake key in a transcript to prove none reaches the output. Active time ignores gaps over 10 minutes, so a session left open overnight cannot claim 14 hours.
+- **feat(cli): `whatsappman run -- <command>`** — run something, then WhatsApp how it went: ✅/❌, duration, exit code, and on failure the tail of its output. Output still streams live and the command's exit code is propagated, so it drops into an existing script or CI step safely. `--on-fail` pages only on breakage; `--quiet` omits the tail. This covers the highest-traffic cases in `docs/USE-CASES.md` (#138 #246 #249 #250 #1 #2 #13) *including the failure branch* that hand-wired `&& whatsappman send …` always misses — you get pinged on success and hear nothing exactly when it broke.
+- **feat(cli): `whatsappman me <text>`** — message yourself. Resolves the sending number's own phone, so the note-to-self inbox needs no number typed.
+- **feat(cli): `whatsappman rename [<label>] [<newLabel>]`** — rename a number, keeping its credentials and history: moves `sessions/<label>/`, rewrites `meta.label`, carries the default pointer over, and reconnects under the new name without a QR. Refuses a name already taken, leaving both directories untouched.
+- **feat(cli): `whatsappman presence <to> <typing|online|offline|recording|paused>`** — send a presence indicator. A status signal, not a message: no content is delivered and nothing is written to the audit log, so it stays outside the draft→confirm gate, but it still resolves the recipient and spends a rate-limit token like any send.
+
+### Interactive CLI
+
+- **feat(cli): every command that needs a value now asks for it.** `default`, `delete`, `rename`, `relink`, `reconnect`, `disconnect`, `scheduled cancel`, `settings set` and `presence` run without arguments show a real ↑/↓ menu instead of a `usage:` dead end — no remembering exact labels, copying UUIDs, or recalling that the setting is spelled `defaultDelayMs`. The CLI already wore `@clack/prompts`' diamond-tree look but had never had the library; prompts were hand-rolled `readline` ("Enter number 1-1", `Type "yes"`). One layer (`src/cli/prompts.ts`) now guarantees three things: **Esc/Ctrl-C always cancels and every prompt says so**, **cancel is never consent** (destructive confirmations default to No, so the safe answer is the one you get by panicking), and **non-TTY never blocks** — CI, pipes and MCP hosts fail fast with the argument they needed rather than hanging on a menu nobody can answer.
+- fix(cli): `status <label>` on a stale or mistyped label now lists the labels that *do* exist. After a rename that is exactly the state you are in.
+- fix(cli): `scheduled cancel` with nothing pending says so *and* accounts for the entries you just saw listed, instead of a bare "nothing pending" that reads like a bug.
+
+### QR pairing
+
+- **fix(link): the terminal QR now scans as fast as the `--image` PNG.** Three separate defects: the renderer inherited `qrcode`'s 1-module quiet zone (the standard wants 4, and a crowded finder pattern is a classic reason a camera will not lock on); solid runs were drawn with the `█` glyph, which fonts render a hair short of the cell so hairline gaps sliced through the finder patterns; and the 16-colour ANSI codes resolve to the terminal *theme's* black/white — on a dark theme a low-contrast grey-on-grey the camera has to strain to threshold. It now renders its own half-blocks with a real quiet zone, one `▀` per cell whose background paints the lower module (so solid runs are filled edge-to-edge, leading included), in the 256-palette's pure `#000`/`#fff`. A reconstruction test proves the rendered cells encode the exact source matrix, so the data is unchanged — only its legibility.
+
+### Bulk sending
+
+- **feat(bulk): a circuit breaker.** The send loop caught every error and carried on, so if WhatsApp started rejecting sends — which is what throttling and an early block look like from inside — it would push through all 100 recipients hammering a service telling it to stop. That is the behaviour most likely to turn a warning into a ban. It now stops after 3 *consecutive* failures, reports the remainder as `skipped` (never contacted, so the result cannot imply otherwise), and raises a desktop notification. Isolated failures reset the counter: one dead number in a list must not stop a batch.
+- feat(bulk): the inter-send delay is jittered ±25%. Firing at exactly 2000 ms is machine-obvious, and mechanical regularity is what automated-behaviour detection looks for.
+
+### Correctness
+
+- **fix(ipc): a daemon older than your CLI now says so.** Renaming a number failed with `BAD_REQUEST: malformed request` because the daemon had been up since before the method existed. The daemon already had a precise `UNKNOWN_METHOD` error but it was unreachable — `method` is a `z.enum`, so an unknown method fails schema validation before the handler lookup that would have raised it. Both sides fixed: newer daemons answer "this daemon does not support X — it is running an older build than your CLI → run: whatsappman restart", and the client attaches the same guidance when an *already-running* daemon returns the bare old message, which is exactly when you cannot rely on the daemon being new.
+- **fix(cli/windows): `run` and `summary` were broken on Windows.** `run` spawned multi-argument commands with no shell to preserve quoting; on Windows npm/npx/yarn/tsc are `.cmd` shims that CreateProcess cannot execute, so `run -- npm test` would have died with ENOENT. `summary` folded only `/` and `.` into `-`, so a Windows cwd (`C:\Users\k\App`) matched no transcript folder and reported nothing. Both now verified on a real `windows-latest` runner.
+
+### Testing
+
+- test: 108 → 192 tests. New coverage for the riskiest paths: `renameSession` (it moves a directory holding credentials — a bug loses a linked number, not a message), the digest's filesystem discovery and streaming parser, the bulk circuit breaker, and the Windows shell decision extracted as a pure function so it is testable without owning a Windows machine.
+- eval: added `use-cases-consistency` (250 documented cases cannot drift into fiction — every command and flag is checked against the real parser), `cli-surface` (every command appears in `help` *and* the docs; no file hand-rolls a prompt), and `ipc-parity` (the `METHODS` allowlist, params schemas and daemon handlers must agree — the mismatch that produced the "malformed request" bug is now a build failure).
+- **test/eval/smoke split into three tiers.** `test/` asks whether a function computes the right value; `eval/` whether the surface we hand a model or a person is correct and self-consistent (offline, under a second); `smoke/` whether the *actual published artifact* installs and works on a real OS.
+- ci: a `windows-latest` / `macos-latest` / `ubuntu-latest` matrix installs the real tarball and runs one shared assertion list, so all three platforms are proven on every push rather than argued about.
+
+### Docs
+
+- **Installing requires `git`** — Baileys depends on `libsignal` via a git URL, so npm shells out to git; on a lean machine the install dies with a bare `npm error syscall spawn git / ENOENT`. Now stated in the README, including that no GitHub account or SSH key is involved (it is fetched over HTTPS).
+- docs: `send-bulk` was never documented in `docs/CLI.md` despite being used in `USE-CASES.md` — found by the new `cli-surface` eval on its first run. Documented, along with the four anti-ban guards and the plain statement that none of them make WhatsApp a bulk-marketing channel.
+
 ## [0.3.0] - 2026-07-29
 
 - **Package renamed to `@integratex/whatsappman`**, published to the public npm registry. The retired private registry `npm.indianic.in` is no longer a target, and `publishConfig` carries `access: public` instead of a registry pin. Everything that npx-resolves or registry-queries the package now reads the name from `package.json` at runtime (`getPackageName()`), so `whatsappman update`, the update notifier, and the editor MCP configs written by `register` can never again point at a package that doesn't exist.
