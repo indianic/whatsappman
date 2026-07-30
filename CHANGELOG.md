@@ -4,6 +4,10 @@ All notable changes to `@integratex/whatsappman` are documented here.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-30
+
+- fix(readme): serve the package-page images from GitHub's CDN instead of the self-hosted site. The npm page for 0.4.0 rendered no images. Neither the URLs nor the registry's stored README were wrong — the images were simply unreachable in time: `whatsappman.indianic.dev` was answering with a **20.7s** TTFB (18–26s site-wide), far past any image proxy's patience. Not the app's fault either; measured on the server itself, our Node process served the same PNG from `127.0.0.1` in **1.4ms** — the host was CPU-starved by an unrelated tenant, which slowed the reverse proxy shared by every site on it. The images already lived in `docs/images/`, so pointing the README at `raw.githubusercontent.com` needed no new assets and cut the fetch to **0.4s**, while removing a self-hosted single point of failure from the package page of every future release. Code unchanged — this release exists only because a version's README is fixed at publish time and cannot be updated in place.
+
 ## [0.4.0] - 2026-07-30
 
 ### New commands
