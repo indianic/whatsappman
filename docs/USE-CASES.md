@@ -374,9 +374,9 @@ self-contained addition.
 
 | # | Case | Needs |
 |---|---|---|
-| 171 | React to a message with an emoji | `sendReaction` |
-| 172 | Mark messages as read | `readMessages` |
-| 173 | Typing / online presence indicator | `sendPresenceUpdate` |
+| 171 | React to a message with an emoji | `sendReaction` + a target message key (inbound) |
+| 172 | Mark messages as read | `readMessages` + inbound message keys |
+| 173 | Typing / online presence indicator | `sendPresenceUpdate` (chat id only — no target message) |
 | 174 | Create a group programmatically | `groupCreate` |
 | 175 | Add or remove group participants | `groupParticipantsUpdate` |
 | 176 | Download media from an inbound message | `downloadMediaMessage` + inbound |
@@ -516,7 +516,7 @@ Any sensor or controller that can run a command (or hit a webhook) can page you.
 | 1 | Recurring schedules (#153–155) | Self-contained, no security implications, removes the OS-cron dependency from ~40 cases above |
 | 2 | Inbound read-only (#156–158, #160) | High value; ship reading before any replying |
 | 3 | Gated reply (#159, #162, #163) | Only after §18 is settled and evals extended |
-| 4 | Quick wins (#171–173, #181) | Small, independent, no new data stored |
+| 4 | Presence indicator (#173) | Truly standalone — `sendPresenceUpdate` takes only a chat id, no target message, no new data. (#171/#172/#181 *look* like quick wins but each needs a target message key, so they ride on the inbound work in row 2, not here.) |
 | 5 | Attachment intake (#164) | Reuses the existing path guard |
 
 ## Related
