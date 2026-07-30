@@ -46,3 +46,56 @@ test('an unknown tool still returns actionable text, never an empty string', () 
   assert.ok(hint.includes('some-future-dep'));
   assert.ok(hint.length > 10);
 });
+
+/**
+ * The launcher check. `daemon install` bakes an ABSOLUTE path to dist/index.js
+ * into the generated launcher, so a rename, a reinstall under a different
+ * scope, or a moved checkout leaves an OS job that exists, reports healthy, and
+ * dies at every login with ERR_MODULE_NOT_FOUND. That is not hypothetical: this
+ * machine's launcher still pointed at the retired `@indianic` scope, so reboot
+ * recovery was silently gone and `doctor` said "OS autostart installed".
+ */
+const { launcherTarget } = await import('../src/cli/doctor.ts');
+
+test('launcherTarget extracts the dist path the OS job will load', async () => {
+  const os = await import('node:os');
+  const fs = await import('node:fs');
+  const p = await import('node:path');
+  const dir = fs.mkdtempSync(p.join(os.tmpdir(), 'wam-launcher-'));
+  const file = p.join(dir, 'launcher');
+  try {
+    fs.writeFileSync(
+      file,
+      `#!/usr/bin/env node\nprocess.argv.splice(2, 0, 'daemon', 'start');\nimport("file:///opt/homebrew/lib/node_modules/@integratex/whatsappman/dist/index.js").catch(() => {});\n`,
+    );
+    assert.equal(
+      launcherTarget(file),
+      '/opt/homebrew/lib/node_modules/@integratex/whatsappman/dist/index.js',
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('launcherTarget surfaces a stale path rather than hiding it', async () => {
+  // The real failure, verbatim: a launcher left pointing at the retired scope.
+  // The point is that it is RETURNED, so doctor can existence-check it — a
+  // parser that quietly returned null here would have hidden the outage.
+  const os = await import('node:os');
+  const fs = await import('node:fs');
+  const p = await import('node:path');
+  const dir = fs.mkdtempSync(p.join(os.tmpdir(), 'wam-launcher-stale-'));
+  const file = p.join(dir, 'launcher');
+  try {
+    fs.writeFileSync(file, `import("file:///opt/homebrew/lib/node_modules/@indianic/whatsappman/dist/index.js").catch(() => {});`);
+    const target = launcherTarget(file);
+    assert.match(target ?? '', /@indianic/, 'the stale path must be reported, not swallowed');
+    assert.equal(fs.existsSync(target), false, 'and it must be checkable for existence');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('launcherTarget returns null for a missing or unparseable launcher', () => {
+  assert.equal(launcherTarget('/nonexistent/launcher'), null);
+});

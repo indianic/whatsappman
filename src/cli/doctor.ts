@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { intro, outro, section, fact, row, attention } from './tree.js';
 import { baseDir, socketPath, tokenPath } from '../config/paths.js';
-import { detectMechanism, isInstalled } from '../daemon/install.js';
+import { detectMechanism, isInstalled, launcherPath } from '../daemon/install.js';
 import { isDaemonAlive } from '../daemon/lock.js';
 import { ping, request } from '../ipc/client.js';
 import type { SessionSummary } from '../status.js';
@@ -21,6 +21,23 @@ function resolvable(cmd: string): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * The dist entrypoint the generated launcher imports, or null if it can't be
+ * read. The launcher is a tiny Node script whose only job is
+ * `import("file:///…/dist/index.js")`, so the path it names is exactly what the
+ * OS job will try to load at login. Pure string extraction — nothing is
+ * executed. Exported for tests.
+ */
+export function launcherTarget(file: string = launcherPath()): string | null {
+  try {
+    const src = fs.readFileSync(file, 'utf8');
+    const m = src.match(/import\(["']file:\/\/([^"']+)["']\)/);
+    return m ? m[1] : null;
+  } catch {
+    return null;
   }
 }
 
@@ -137,8 +154,27 @@ export async function runDoctor(fix = false): Promise<number> {
 
   section('autostart');
   fact(`mechanism: ${detectMechanism()}`, true);
-  if (isInstalled()) fact('OS autostart installed', true);
-  else attention('not installed — run: whatsappman init');
+  if (isInstalled()) {
+    fact('OS autostart installed', true);
+    // "Installed" only means the OS job exists. The job runs a launcher that
+    // hardcodes an ABSOLUTE path to dist/index.js, baked in at install time —
+    // so a rename, a reinstall under a different scope, or a moved checkout
+    // leaves a job that exists, reports healthy, and dies at every login with
+    // ERR_MODULE_NOT_FOUND. Found exactly that here: a launcher still pointing
+    // at the retired @indianic scope, so the daemon survived only because
+    // manual starts fall back to a detached spawn. Reboot recovery was gone and
+    // nothing said so.
+    const target = launcherTarget();
+    if (target === null) {
+      attention(`could not read the launcher at ${launcherPath()} — re-run: whatsappman daemon install`);
+    } else if (!fs.existsSync(target)) {
+      fact(`launcher target missing: ${target}`, false);
+      bad();
+      row('the daemon will NOT start at login — run: whatsappman daemon install');
+    } else {
+      fact('launcher target resolves', true);
+    }
+  } else attention('not installed — run: whatsappman init');
 
   if (reachable) {
     section('numbers');
