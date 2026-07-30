@@ -13,7 +13,7 @@ process.env.WHATSAPPMAN_DIR = dir;
 const { ensureBaseDir, socketPath } = await import('../src/config/paths.ts');
 const { startIpcServer } = await import('../src/ipc/server.ts');
 const { request, ping } = await import('../src/ipc/client.ts');
-const { rotateToken, verifyToken, clearToken } = await import('../src/ipc/access.ts');
+const { rotateToken, verifyToken, clearToken, readToken } = await import('../src/ipc/access.ts');
 const { WhatsAppManError, ErrorCode } = await import('../src/errors.ts');
 
 let server: Server | null = null;
@@ -96,4 +96,32 @@ test('a malformed request line is rejected BAD_REQUEST', async () => {
   const parsed = JSON.parse(response);
   assert.equal(parsed.ok, false);
   assert.equal(parsed.error.code, ErrorCode.BAD_REQUEST);
+});
+
+test('a method this build has never heard of names the version skew, not "malformed"', async () => {
+  // The real-world trigger: a daemon that has been up for a day meets a CLI
+  // that just gained a new method. `method` is a z.enum, so the request fails
+  // schema validation before the handler lookup that would have said
+  // UNKNOWN_METHOD — which used to surface as a bare "malformed request" and
+  // sent you hunting for a bug in your arguments instead of restarting.
+  const line = JSON.stringify({ id: 'x2', token: readToken(), method: 'some_future_method' }) + '\n';
+  const response = await new Promise<string>((resolve, reject) => {
+    const sock = net.connect(socketPath());
+    let buf = '';
+    sock.setEncoding('utf8');
+    sock.on('connect', () => sock.write(line));
+    sock.on('data', (c: string) => {
+      buf += c;
+      if (buf.includes('\n')) {
+        sock.destroy();
+        resolve(buf.trim());
+      }
+    });
+    sock.on('error', reject);
+  });
+  const parsed = JSON.parse(response);
+  assert.equal(parsed.ok, false);
+  assert.equal(parsed.error.code, ErrorCode.UNKNOWN_METHOD, 'must not be a generic BAD_REQUEST');
+  assert.match(parsed.error.message, /older build/, 'must name the cause');
+  assert.deepEqual(parsed.error.next_steps, ['run: whatsappman restart'], 'must say how to fix it');
 });

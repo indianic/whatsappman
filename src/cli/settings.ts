@@ -1,12 +1,37 @@
 import { intro, outro, section, row, fail } from './tree.js';
 import { request } from '../ipc/client.js';
 import { WhatsAppManError } from '../errors.js';
+import { selectOne, askText, canPrompt } from './prompts.js';
 import type { Settings } from '../config/schema.js';
 
 const NUMERIC_KEYS = ['draftTtlMinutes', 'defaultDelayMs', 'maxBulkRecipients'];
 const BOOL_KEYS = ['alwaysConfirm', 'notifications'];
 const STRING_KEYS = ['defaultCountryCode'];
 export const SETTABLE = [...NUMERIC_KEYS, ...BOOL_KEYS, ...STRING_KEYS];
+
+/** One-line explanation per key, so the picker teaches instead of just listing. */
+const SETTING_HELP: Record<string, string> = {
+  draftTtlMinutes: 'how long a draft stays confirmable',
+  defaultDelayMs: 'pause between bulk sends (anti-ban)',
+  maxBulkRecipients: 'cap on recipients per bulk send',
+  alwaysConfirm: 'always require confirmation',
+  notifications: 'desktop notifications',
+  defaultCountryCode: 'country code applied to bare numbers',
+};
+
+export function isBoolSetting(key: string): boolean {
+  return BOOL_KEYS.includes(key);
+}
+
+/** Menu rows for `settings set` with no key: each key, what it does, and what
+ *  it is set to right now. Pure, for tests. */
+export function settingChoices(current: Settings): Array<{ value: string; label: string; hint: string }> {
+  return SETTABLE.map((key) => ({
+    value: key,
+    label: `${key.padEnd(18)} ${String((current as unknown as Record<string, unknown>)[key])}`,
+    hint: SETTING_HELP[key] ?? '',
+  }));
+}
 
 export type CoerceResult =
   | { ok: true; value: number | boolean | string }
@@ -63,14 +88,42 @@ export async function runSettings(args: string[]): Promise<number> {
     }
 
     if (sub === 'set') {
-      const key = args[2];
-      const rawValue = args[3];
+      let key = args[2];
+      let rawValue = args[3];
+
+      // No key / no value: pick them instead of dead-ending on a usage line.
+      // Nobody remembers `defaultDelayMs` or what it is currently set to.
       if (!key || rawValue === undefined) {
-        fail('usage: whatsappman settings set <key> <value>');
-        row(`keys: ${SETTABLE.join(', ')}`);
-        outro('settings');
-        return 1;
+        if (!canPrompt('usage: whatsappman settings set <key> <value>')) {
+          row(`keys: ${SETTABLE.join(', ')}`);
+          outro('settings');
+          return 1;
+        }
+        const current = await request<Settings>('get_settings');
+        if (!key) {
+          const picked = await selectOne('Which setting?', settingChoices(current));
+          if (!picked) {
+            outro('settings');
+            return 1;
+          }
+          key = picked;
+        }
+        if (rawValue === undefined) {
+          const now = String((current as unknown as Record<string, unknown>)[key]);
+          const answer = isBoolSetting(key)
+            ? await selectOne(`${key} — currently ${now}`, [
+                { value: 'true', label: 'true' },
+                { value: 'false', label: 'false' },
+              ])
+            : await askText(`${key} — currently ${now}`, { initialValue: now });
+          if (!answer) {
+            outro('settings');
+            return 1;
+          }
+          rawValue = answer;
+        }
       }
+
       if (!SETTABLE.includes(key)) {
         fail(`unknown setting "${key}"`);
         row(`keys: ${SETTABLE.join(', ')}`);

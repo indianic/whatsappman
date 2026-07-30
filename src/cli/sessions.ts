@@ -1,8 +1,9 @@
-import readline from 'node:readline';
 import { intro, outro, section, row, fact, fail, attention, pad } from './tree.js';
+import { askText, confirmDestructive, canPrompt } from './prompts.js';
 import { request } from '../ipc/client.js';
 import { WhatsAppManError } from '../errors.js';
 import { isInteractiveTerminal } from './interactive.js';
+import { pickSession } from './pick.js';
 import type { SessionSummary } from '../status.js';
 
 function reportError(err: unknown, label: string): number {
@@ -16,21 +17,27 @@ function reportError(err: unknown, label: string): number {
   return 1;
 }
 
-function requireLabel(cmd: string, label: string | undefined): label is string {
-  if (!label) {
-    intro(`whatsappman — ${cmd}`);
-    fail(`usage: whatsappman ${cmd} <label>`);
-    outro(cmd);
-    return false;
-  }
-  return true;
+/**
+ * Resolve the target label for a label-taking command: use the one typed, else
+ * (no label) open the interactive picker over the existing numbers. Returns the
+ * chosen label, or null if the user cancelled / there was nothing to pick — in
+ * which case the picker has already explained why and the caller should outro.
+ * Must be called after intro().
+ */
+async function resolveLabel(action: string, label: string | undefined): Promise<string | null> {
+  if (label) return label;
+  return pickSession(action);
 }
 
 export async function runReconnect(label: string | undefined): Promise<number> {
-  if (!requireLabel('reconnect', label)) return 1;
-  intro(`whatsappman — reconnect "${label}"`);
+  intro('whatsappman — reconnect');
+  const lbl = await resolveLabel('reconnect', label);
+  if (!lbl) {
+    outro('reconnect');
+    return 1;
+  }
   try {
-    const r = await request<{ label: string; status: string }>('reconnect', { label });
+    const r = await request<{ label: string; status: string }>('reconnect', { label: lbl });
     section('reconnect');
     fact(`"${r.label}" is now ${r.status}`, r.status === 'connected' || r.status === 'connecting');
     outro('reconnect');
@@ -41,10 +48,14 @@ export async function runReconnect(label: string | undefined): Promise<number> {
 }
 
 export async function runDisconnect(label: string | undefined): Promise<number> {
-  if (!requireLabel('disconnect', label)) return 1;
-  intro(`whatsappman — disconnect "${label}"`);
+  intro('whatsappman — disconnect');
+  const lbl = await resolveLabel('disconnect', label);
+  if (!lbl) {
+    outro('disconnect');
+    return 1;
+  }
   try {
-    const r = await request<{ label: string; status: string }>('disconnect', { label });
+    const r = await request<{ label: string; status: string }>('disconnect', { label: lbl });
     section('disconnect');
     row(`"${r.label}" ${r.status} (creds kept — reconnect anytime)`);
     outro('disconnect');
@@ -54,34 +65,87 @@ export async function runDisconnect(label: string | undefined): Promise<number> 
   }
 }
 
-async function confirmYes(promptText: string): Promise<boolean> {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const answer = await new Promise<string>((resolve) => rl.question(promptText, resolve));
-  rl.close();
-  return /^y(es)?$/i.test(answer.trim());
+/** Set the default number used when a send omits `from`. Picks from the list
+ *  when no label is given. */
+export async function runDefault(label: string | undefined): Promise<number> {
+  intro('whatsappman — default');
+  // autoSingle: with just one number there is nothing to choose.
+  const lbl = label ?? (await pickSession('set as default', { autoSingle: true, command: 'default' }));
+  if (!lbl) {
+    outro('default');
+    return 1;
+  }
+  try {
+    const res = await request<{ defaultSession: string }>('set_default', { label: lbl });
+    section('default');
+    row(`default number set to "${res.defaultSession}"`);
+    outro('default');
+    return 0;
+  } catch (err) {
+    return reportError(err, 'default');
+  }
+}
+
+
+/** Rename a number's label (keeps creds + history). Picks the source from the
+ *  list when omitted, and prompts for the new name when omitted. */
+export async function runRename(oldLabel: string | undefined, newLabel: string | undefined): Promise<number> {
+  intro('whatsappman — rename');
+  const from = await resolveLabel('rename', oldLabel);
+  if (!from) {
+    outro('rename');
+    return 1;
+  }
+  let to = newLabel;
+  if (!to) {
+    if (!canPrompt('no new label given — usage: whatsappman rename <label> <newLabel>')) {
+      outro('rename');
+      return 1;
+    }
+    const answer = await askText(`New label for "${from}"`, { placeholder: 'e.g. work' });
+    if (!answer) {
+      outro('rename');
+      return 1;
+    }
+    to = answer;
+  }
+  try {
+    const r = await request<{ from: string; to: string; status: string }>('rename_session', {
+      oldLabel: from,
+      newLabel: to,
+    });
+    section('rename');
+    fact(`"${r.from}" → "${r.to}" (${r.status})`, true);
+    outro('rename');
+    return 0;
+  } catch (err) {
+    return reportError(err, 'rename');
+  }
 }
 
 export async function runDelete(label: string | undefined, yes: boolean): Promise<number> {
-  if (!requireLabel('delete', label)) return 1;
-  intro(`whatsappman — delete "${label}"`);
+  intro('whatsappman — delete');
+  const lbl = await resolveLabel('delete', label);
+  if (!lbl) {
+    outro('delete');
+    return 1;
+  }
   if (!yes) {
-    if (!isInteractiveTerminal()) {
-      fail(`delete needs confirmation — re-run with --yes in a non-interactive shell.`);
+    if (!canPrompt('delete needs confirmation — re-run with --yes in a non-interactive shell')) {
       outro('delete');
       return 1;
     }
-    attention(`this permanently removes "${label}" (creds + history). This cannot be undone.`);
-    const ok = await confirmYes('Type "yes" to confirm: ');
-    if (!ok) {
-      row('aborted');
+    attention(`this permanently removes "${lbl}" (creds + history). This cannot be undone.`);
+    if (!(await confirmDestructive(`Permanently delete "${lbl}"?`))) {
+      row('aborted — nothing was deleted');
       outro('delete');
       return 1;
     }
   }
   try {
-    await request('delete_session', { label });
+    await request('delete_session', { label: lbl });
     section('delete');
-    row(`"${label}" deleted`);
+    row(`"${lbl}" deleted`);
     outro('delete');
     return 0;
   } catch (err) {
@@ -96,7 +160,14 @@ export async function runStatusOne(label: string): Promise<number> {
     const s = sessions.find((x) => x.label === label);
     section('number');
     if (!s) {
+      // Don't dead-end on a typo or a label that has since been renamed: say
+      // what IS there, so the next command is obvious.
       fail(`no session "${label}"`);
+      if (sessions.length) {
+        row(`linked numbers: ${sessions.map((x) => x.label).join(', ')}`);
+      } else {
+        row('no numbers linked yet — run: whatsappman link');
+      }
       outro('status');
       return 1;
     }

@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Evals
+        run: npm run eval
+
+  # The cross-platform job. whatsappman installs an OS autostart job, spawns
+  # child processes and resolves paths, and none of that can be verified from one
+  # machine. Windows especially: Windows containers require a Windows host, so no
+  # amount of Docker on macOS or Linux substitutes for a windows-latest runner.
+  smoke:
+    name: smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false # one platform failing must not hide the others
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      # Installing this package needs git: Baileys pulls libsignal from a git
+      # URL. Runners have it; asserting keeps the requirement visible rather
+      # than letting it be rediscovered on a lean machine.
+      - name: Show git version (required to install)
+        run: git --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # Install the ACTUAL tarball, exactly as a user would, so a file missing
+      # from package.json "files" fails here instead of in someone's terminal.
+      - name: Pack and install globally
+        shell: bash
+        run: |
+          npm pack --pack-destination "$RUNNER_TEMP"
+          TGZ=$(ls "$RUNNER_TEMP"/*.tgz | head -1)
+          npm install -g "$TGZ"
+
+      - name: Smoke test the installed CLI
+        shell: bash
+        run: node eval/smoke-cli.mjs

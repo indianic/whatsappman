@@ -1,17 +1,9 @@
 import fs from 'node:fs';
-import readline from 'node:readline';
 import { intro, outro, section, row, fail, attention } from './tree.js';
 import { baseDir } from '../config/paths.js';
 import { stopDaemon } from './daemon-control.js';
 import { uninstall as osUninstall } from '../daemon/install.js';
-import { isInteractiveTerminal } from './interactive.js';
-
-async function confirmYes(promptText: string): Promise<boolean> {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const answer = await new Promise<string>((resolve) => rl.question(promptText, resolve));
-  rl.close();
-  return /^y(es)?$/i.test(answer.trim());
-}
+import { confirmDestructive, canPrompt } from './prompts.js';
 
 /**
  * Wipe everything for a clean re-setup: stop the daemon, remove the OS autostart
@@ -24,14 +16,12 @@ export async function runReset(yes: boolean): Promise<number> {
   attention('numbers, credentials, logs, and scheduled sends. Cannot be undone.');
 
   if (!yes) {
-    if (!isInteractiveTerminal()) {
-      fail('reset needs confirmation — re-run with --yes in a non-interactive shell.');
+    if (!canPrompt('reset needs confirmation — re-run with --yes in a non-interactive shell')) {
       outro('reset');
       return 1;
     }
-    const ok = await confirmYes('Type "yes" to wipe everything: ');
-    if (!ok) {
-      row('aborted');
+    if (!(await confirmDestructive('Wipe every number, credential, log and scheduled send?'))) {
+      row('aborted — nothing was removed');
       outro('reset');
       return 1;
     }

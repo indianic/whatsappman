@@ -57,7 +57,22 @@ export function request<T = unknown>(method: Method, params?: unknown): Promise<
             resolve(parsed.result as T);
           } else {
             const e = parsed.error;
-            reject(new WhatsAppManError((e?.code ?? ErrorCode.INTERNAL) as ErrorCode, e?.message ?? 'error', e?.next_steps));
+            reject(
+              new WhatsAppManError(
+                (e?.code ?? ErrorCode.INTERNAL) as ErrorCode,
+                e?.message ?? 'error',
+                // A daemon predating this CLI rejects a method it has never
+                // heard of as a flat "malformed request" (its request schema
+                // enum fails before the handler lookup that would have said
+                // UNKNOWN_METHOD). Newer daemons name that case themselves;
+                // this covers the ones already running out there, which is
+                // precisely when you cannot rely on the daemon being new.
+                e?.next_steps ??
+                  (e?.message === 'malformed request'
+                    ? ['the daemon may be running an older build than your CLI', 'run: whatsappman restart']
+                    : undefined),
+              ),
+            );
           }
         } catch (err) {
           reject(new WhatsAppManError(ErrorCode.INTERNAL, `bad response from daemon: ${String((err as Error).message)}`));

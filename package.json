@@ -24,7 +24,9 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
     "eval": "tsx --test eval/*.eval.ts",
-    "verify": "npm run lint && npm run typecheck && npm run build && npm test && npm run eval"
+    "verify": "npm run lint && npm run typecheck && npm run build && npm test && npm run eval",
+    "eval:docker": "WAM_DOCKER=1 tsx --test eval/docker-linux.eval.ts",
+    "eval:docker:clean": "docker rmi -f $(docker images -q whatsappman-smoke-base) 2>/dev/null; docker volume rm -f whatsappman-smoke-npm-cache 2>/dev/null; echo cleaned"
   },
   "engines": {
     "node": ">=18"
@@ -39,6 +41,7 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@clack/prompts": "^0.7.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@whiskeysockets/baileys": "^6.7.0",
     "mime-types": "^3.0.0",

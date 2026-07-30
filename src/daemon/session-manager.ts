@@ -17,6 +17,8 @@ import {
   listSessionLabels,
   hasCreds,
   deleteSessionDir,
+  sessionExists,
+  renameSessionDir,
 } from '../config/sessions.js';
 import { readState, writeState, readSettings } from '../config/state.js';
 import { WhatsAppManError, ErrorCode } from '../errors.js';
@@ -27,7 +29,7 @@ import {
   type RecipientMatch,
   type GroupInfo,
 } from './contact-service.js';
-import { validateBulk } from './bulk.js';
+import { validateBulk, withJitter, BulkGuard } from './bulk.js';
 import { RateLimiter } from './rate-limit.js';
 import { notify } from './notify.js';
 import type { SessionStatus, SessionMeta } from '../config/schema.js';
@@ -340,6 +342,34 @@ export class SessionManager {
     return this.resolveSendLabel(from);
   }
 
+  /**
+   * Send a presence update — "typing…"/"recording…"/online/offline — to a
+   * recipient. Not a message: no content is delivered and nothing is written to
+   * the audit log. It is still an outbound socket call, so it resolves the
+   * recipient (bare numbers/names work, ambiguity errors) and spends an
+   * anti-runaway rate-limit token like any other send.
+   */
+  async sendPresence(
+    from: string | undefined,
+    to: string,
+    presence: 'available' | 'unavailable' | 'composing' | 'recording' | 'paused',
+  ): Promise<{ label: string; toJid: string; toName: string; presence: string }> {
+    const label = this.resolveSendLabel(from);
+    const socket = this.connectedSocket(label); // NEEDS_RELINK / NOT_CONNECTED before we touch the wire
+    const matches = await this.resolveRecipient(label, to);
+    if (matches.length > 1) {
+      throw new WhatsAppManError(
+        ErrorCode.AMBIGUOUS_RECIPIENT,
+        `"${to}" matches ${matches.length} recipients — be more specific or pass a JID`,
+        matches.map((m) => `${m.name} (${m.jid})`),
+      );
+    }
+    const m = matches[0];
+    this.checkRate(label);
+    await socket.sendPresenceUpdate(presence, m.jid);
+    return { label, toJid: m.jid, toName: m.name, presence };
+  }
+
   /** Resolve a recipient reference to candidate JIDs (for draft_message / resolve_recipient). */
   async resolveRecipient(label: string, query: string): Promise<RecipientMatch[]> {
     const socket = this.connectedSocket(label);
@@ -417,7 +447,14 @@ export class SessionManager {
     from: string | undefined,
     recipients: string[],
     text: string,
-  ): Promise<{ label: string; sent: number; failed: number; results: Array<{ to: string; status: string; error?: string }> }> {
+  ): Promise<{
+    label: string;
+    sent: number;
+    failed: number;
+    skipped: number;
+    aborted: string | null;
+    results: Array<{ to: string; status: string; error?: string }>;
+  }> {
     const settings = readSettings();
     validateBulk(recipients, settings.maxBulkRecipients);
     const label = this.resolveSendLabel(from);
@@ -426,21 +463,42 @@ export class SessionManager {
     const results: Array<{ to: string; status: string; error?: string }> = [];
     let sent = 0;
     let failed = 0;
+    let skipped = 0;
+    const guard = new BulkGuard();
+
     for (let i = 0; i < recipients.length; i++) {
       const to = recipients[i];
+
+      // Circuit breaker. A run of failures is what throttling or an early block
+      // looks like from here; pushing the rest of the batch at that moment is
+      // what turns a warning into a ban. Stop, and report the remainder as
+      // skipped rather than pretending they were attempted.
+      if (guard.isAborted) {
+        results.push({ to, status: 'skipped', error: guard.aborted ?? undefined });
+        skipped++;
+        continue;
+      }
+
       try {
         this.checkRate(label); // anti-runaway; a delayed bulk refills and never trips it
         const jid = this.formatJid(to);
         await socket.sendMessage(jid, { text });
         results.push({ to, status: 'sent' });
         sent++;
+        guard.recordSuccess();
       } catch (err) {
         results.push({ to, status: 'failed', error: String((err as Error)?.message ?? err) });
         failed++;
+        guard.recordFailure();
+        if (guard.isAborted) notify('Bulk send stopped', `${label}: ${guard.aborted}`);
       }
-      if (i < recipients.length - 1) await sleep(settings.defaultDelayMs);
+
+      // Jittered pause so the batch doesn't fire on a machine-perfect cadence.
+      if (i < recipients.length - 1 && !guard.isAborted) {
+        await sleep(withJitter(settings.defaultDelayMs));
+      }
     }
-    return { label, sent, failed, results };
+    return { label, sent, failed, skipped, aborted: guard.aborted, results };
   }
 
   /** Is this a session that actually exists (live in memory OR persisted on disk)?
@@ -504,6 +562,46 @@ export class SessionManager {
     fs.rmSync(authDir(label), { recursive: true, force: true });
     this.patchMeta(label, { status: 'qr_pending', phone: null });
     await this.connect(label);
+  }
+
+  /**
+   * Rename a number's label, keeping its creds + history. The live socket's
+   * saveCreds closure is bound to the OLD auth path, so renaming a connected
+   * session safely means: stop the socket, move the folder, repoint the default,
+   * then reconnect under the new label (creds are still valid, so it comes back
+   * without a QR). Errors if the target label is taken.
+   */
+  async renameSession(oldLabel: string, newLabel: string): Promise<{ from: string; to: string; status: SessionStatus }> {
+    this.requireKnown(oldLabel);
+    if (oldLabel === newLabel) {
+      throw new WhatsAppManError(ErrorCode.BAD_REQUEST, `"${newLabel}" is already the label`);
+    }
+    if (this.isKnownSession(newLabel) || sessionExists(newLabel)) {
+      throw new WhatsAppManError(ErrorCode.BAD_REQUEST, `a number labelled "${newLabel}" already exists`, [
+        'pick a different name',
+      ]);
+    }
+
+    // Stop the live socket + any pending reconnect so nothing writes to the old
+    // path while we move it.
+    const s = this.sessions.get(oldLabel);
+    if (s?.reconnectTimer) clearTimeout(s.reconnectTimer);
+    try {
+      s?.socket?.end(undefined);
+    } catch {
+      /* ignore */
+    }
+    this.sessions.delete(oldLabel);
+
+    renameSessionDir(oldLabel, newLabel);
+
+    // Carry the default pointer over so a rename never silently unsets it.
+    const state = readState();
+    if (state?.defaultSession === oldLabel) writeState({ ...state, defaultSession: newLabel });
+
+    // Bring it back online under the new label (creds are intact → no QR).
+    if (hasCreds(newLabel)) await this.connect(newLabel);
+    return { from: oldLabel, to: newLabel, status: this.statusOf(newLabel) };
   }
 
   /** Permanently remove a number: socket + auth creds + meta. */

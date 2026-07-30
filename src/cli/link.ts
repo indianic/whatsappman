@@ -9,6 +9,7 @@ import { startDaemon } from './daemon-control.js';
 import { isDaemonAlive } from '../daemon/lock.js';
 import { normalizeLabel } from '../config/sessions.js';
 import { requireTty } from './interactive.js';
+import { pickSession } from './pick.js';
 import { WhatsAppManError } from '../errors.js';
 
 interface LinkState {
@@ -44,6 +45,68 @@ const MAX_POLLS = 90; // ~3 minutes
  * distorted, unscannable rectangle.
  */
 const QR_ERROR_CORRECTION = 'L';
+
+/**
+ * How many modules of white quiet zone to draw around the code. The QR standard
+ * calls for 4; `qrcode`'s built-in small terminal renderer hardcodes just 1 and
+ * ignores its `margin` option — and a one-module border is a well-known reason a
+ * phone camera fails to lock on, since surrounding terminal text sits right
+ * against the finder patterns. We render our own half-blocks (below) so we can
+ * give it a real quiet zone. 2 keeps the block ≤ 80 columns and the same height
+ * as before while doubling the border; the dark terminal beyond the white zone
+ * adds even more contrast for the scanner.
+ */
+const QR_QUIET_ZONE = 2;
+
+/**
+ * Render a QR as compact terminal text, two module rows packed into each text
+ * row, forced black-on-white with a real quiet zone. Exported for tests.
+ *
+ * Every cell is a single upper-half block `▀`: its FOREGROUND colour paints the
+ * top module, its BACKGROUND colour the bottom module. This one-glyph + fg/bg
+ * scheme (what image viewers like chafa use) beats mixing ▀▄█/space: a solid
+ * black run is drawn by the cell BACKGROUND, which the terminal fills edge to
+ * edge — including the line leading — so stacked rows stay seamless.
+ *
+ * Colours are the 256-palette's PURE black (16 = #000000) and white (231 =
+ * #ffffff), never the 16-colour codes (30/37/40/47) — those resolve to the
+ * terminal *theme's* black/white, which on a dark theme is a low-contrast
+ * grey-on-grey that a phone camera has to strain to threshold (why the terminal
+ * QR scanned slowly while the pure-black-on-white PNG scanned instantly). 256
+ * colour is near-universal, including Terminal.app, which lacks truecolor.
+ *
+ * `margin` on the library renderer is a no-op in small mode, so we draw our own
+ * quiet zone — the QR standard wants ~4 modules; the library gives only 1.
+ */
+const FG_DARK = '38;5;16'; // pure-black foreground   (top module dark)
+const FG_LIGHT = '38;5;231'; // pure-white foreground  (top module light)
+const BG_DARK = '48;5;16'; // pure-black background   (bottom module dark)
+const BG_LIGHT = '48;5;231'; // pure-white background  (bottom module light)
+
+export function renderTerminalQr(text: string, quietZone = QR_QUIET_ZONE): string {
+  const qr = QRCode.create(text, { errorCorrectionLevel: QR_ERROR_CORRECTION });
+  const size = qr.modules.size;
+  const data = qr.modules.data;
+  // Any coordinate outside the module grid is quiet zone → light (never dark).
+  const dark = (x: number, y: number): boolean =>
+    x >= 0 && y >= 0 && x < size && y < size && !!data[y * size + x];
+
+  const RESET = '\x1b[0m';
+  const lo = -quietZone;
+  const hi = size + quietZone;
+
+  const lines: string[] = [];
+  for (let y = lo; y < hi; y += 2) {
+    let line = '';
+    for (let x = lo; x < hi; x++) {
+      const fg = dark(x, y) ? FG_DARK : FG_LIGHT; // top module → foreground
+      const bg = dark(x, y + 1) ? BG_DARK : BG_LIGHT; // bottom module → background
+      line += `\x1b[${fg};${bg}m▀`;
+    }
+    lines.push(line + RESET);
+  }
+  return lines.join('\n') + '\n';
+}
 
 /** Rendered size of a terminal QR block, ANSI escapes excluded. Pure, for tests. */
 export function qrBlockSize(ascii: string): { rows: number; cols: number } {
@@ -180,11 +243,9 @@ export function createQrPainter(): (qr: string) => Promise<void> {
   let warned = false;
 
   return async function paintQr(qr: string): Promise<void> {
-    const ascii = await QRCode.toString(qr, {
-      type: 'terminal',
-      small: true,
-      errorCorrectionLevel: QR_ERROR_CORRECTION,
-    });
+    // Our own renderer (not QRCode.toString) so the code gets a real quiet zone;
+    // the library's small terminal renderer only draws a 1-module border.
+    const ascii = renderTerminalQr(qr);
 
     const advice = qrFitAdvice(qrBlockSize(ascii), {
       rows: process.stdout.rows,
@@ -234,13 +295,20 @@ export async function runLink(rawLabel: string | undefined, asImage = false): Pr
   return linkFlow(normalizeLabel(rawLabel ?? 'default'), 'link', explicit, asImage);
 }
 
-/** Re-pair an expired/logged-out number with a fresh QR (keeps history). */
+/** Re-pair an expired/logged-out number with a fresh QR (keeps history). Picks
+ *  the number from the list when no label is given — handy for the common
+ *  "which one says NEEDS_RELINK?" case. */
 export async function runRelink(rawLabel: string | undefined, asImage = false): Promise<number> {
   if (!rawLabel) {
+    if (!requireTty('whatsappman relink')) return 1;
     intro('whatsappman — relink');
-    fail('usage: whatsappman relink <label>');
-    outro('relink');
-    return 1;
+    const picked = await pickSession('relink');
+    if (!picked) {
+      outro('relink');
+      return 1;
+    }
+    // Reuse the intro we just printed for the picker.
+    return linkFlow(normalizeLabel(picked), 'relink', true, asImage, true);
   }
   return linkFlow(normalizeLabel(rawLabel), 'relink', true, asImage);
 }
@@ -250,12 +318,13 @@ async function linkFlow(
   method: 'link' | 'relink',
   explicit: boolean,
   asImage = false,
+  alreadyIntroed = false,
 ): Promise<number> {
   // Pairing renders a QR to scan — pointless (and would hang polling) without a
   // real terminal, so refuse early in an AI-tool shell / pipe.
   if (!requireTty(`whatsappman ${method}`)) return 1;
 
-  intro(`whatsappman — ${method} "${label}"`);
+  if (!alreadyIntroed) intro(`whatsappman — ${method} "${label}"`);
 
   if (!isDaemonAlive()) {
     row('starting daemon…');

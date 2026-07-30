@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import QRCode from 'qrcode';
-import { qrBlockSize, qrFitAdvice, repaintPrefix, createQrPainter } from '../src/cli/link.js';
+import { qrBlockSize, qrFitAdvice, repaintPrefix, createQrPainter, renderTerminalQr } from '../src/cli/link.js';
 
 /**
  * The QR is the one screen a user cannot work around: if it overflows the
@@ -236,6 +236,63 @@ test('both painters exist and are independently constructible', async () => {
   // until a QR is actually painted.
   const paint = link.createQrImagePainter('unused-label', async () => {});
   assert.equal(typeof paint, 'function');
+});
+
+/**
+ * The custom terminal renderer. `qrcode`'s small renderer draws only a 1-module
+ * quiet zone (and ignores its `margin` option), which is a common reason a phone
+ * camera fails to lock on. We render our own half-blocks so the code gets a real
+ * border — without changing the data it encodes.
+ */
+test('renderTerminalQr encodes the EXACT source matrix (pixel-perfect, scannable)', () => {
+  const qz = 2;
+  const ascii = renderTerminalQr(PAYLOAD, qz);
+  const src = QRCode.create(PAYLOAD, { errorCorrectionLevel: 'L' });
+  const size = src.modules.size;
+  const lines = ascii.replace(/\n+$/, '').split('\n');
+
+  // Each cell is `\x1b[{fg};{bg}m▀`: fg 38;5;16 = pure black paints the TOP
+  // module dark, bg 48;5;16 the BOTTOM. Reconstruct the grid from the colours.
+  let mismatches = 0;
+  for (let r = 0; r < lines.length; r++) {
+    const cells = [...lines[r].matchAll(/\x1b\[(38;5;\d+);(48;5;\d+)m▀/g)];
+    for (let c = 0; c < cells.length; c++) {
+      const x = c - qz;
+      const yTop = r * 2 - qz;
+      const top = cells[c][1] === '38;5;16'; // black foreground
+      const bottom = cells[c][2] === '48;5;16'; // black background
+      for (const [xx, yy, on] of [[x, yTop, top], [x, yTop + 1, bottom]] as const) {
+        const inGrid = xx >= 0 && yy >= 0 && xx < size && yy < size;
+        const srcDark = inGrid ? !!src.modules.data[yy * size + xx] : false;
+        if (srcDark !== on) mismatches++;
+      }
+    }
+  }
+  assert.equal(mismatches, 0, 'rendered cells must reconstruct the source QR exactly, or it will not scan');
+});
+
+test('renderTerminalQr gives a real quiet zone (wider than the library default of 1)', () => {
+  // The whole point: the top rows are all light so the finder patterns are not
+  // crowded by surrounding terminal text.
+  const first = renderTerminalQr(PAYLOAD, 2).split('\n')[0];
+  const cells = [...first.matchAll(/\x1b\[(38;5;\d+);(48;5;\d+)m▀/g)];
+  assert.ok(cells.length > 0, 'first row must have cells');
+  assert.ok(cells.every((m) => m[1] === '38;5;231' && m[2] === '48;5;231'), 'the first module row must be all quiet-zone white');
+});
+
+test('renderTerminalQr uses PURE black/white (256-palette 16/231), not low-contrast theme colours', () => {
+  // 16-colour 30/37/40/47 resolve to the terminal theme's grey-ish black/white,
+  // which a phone camera struggles to threshold — the reason the terminal QR
+  // scanned slowly. Pure #000/#fff (indices 16/231) scan as fast as the PNG.
+  const ascii = renderTerminalQr(PAYLOAD, 2);
+  assert.match(ascii, /\x1b\[38;5;16;48;5;16m/, 'a solid pure-black cell must be present');
+  assert.match(ascii, /\x1b\[38;5;231;48;5;231m/, 'a solid pure-white cell must be present');
+  assert.doesNotMatch(ascii, /\x1b\[(30|37|40|47)m/, 'must not use the low-contrast 16-colour codes');
+});
+
+test('renderTerminalQr still fits 80 columns with the quiet zone', () => {
+  const { cols } = qrBlockSize(renderTerminalQr(PAYLOAD, 2));
+  assert.ok(cols <= 80, `QR is ${cols} cols — would wrap and become unscannable`);
 });
 
 test('a real 237-byte pairing QR still fits 80 columns in the terminal', async () => {

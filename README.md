@@ -46,7 +46,14 @@ Ask your AI in plain English. WhatsAppMan **drafts, previews, and only sends on 
 npm install -g @integratex/whatsappman
 ```
 
-Requires Node.js 18+. Installs the `whatsappman` CLI globally.
+Requires **Node.js 18+** and **git** on your PATH. Installs the `whatsappman`
+CLI globally.
+
+> **Why git?** Baileys (the WhatsApp library) depends on `libsignal` via a git
+> URL, so npm shells out to git during install. Most machines already have it;
+> on a lean one (slim container, bare VPS, minimal CI image) the install fails
+> with `npm error syscall spawn git … ENOENT`. Install git and re-run. No GitHub
+> account or SSH key is needed — it is fetched over HTTPS.
 
 ## Usage
 

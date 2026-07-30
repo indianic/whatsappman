@@ -2,8 +2,11 @@ import { intro, outro, section, row, fact, fail, attention } from './tree.js';
 import { renderStatus, renderNumbers } from './render-status.js';
 import { startDaemon, stopDaemon, restartDaemon } from './daemon-control.js';
 import { runLink, runRelink } from './link.js';
-import { runSend, runSendMedia, runSendBulk } from './send.js';
-import { runReconnect, runDisconnect, runDelete, runStatusOne } from './sessions.js';
+import { runSend, runSendMedia, runSendBulk, runPresence, runMe } from './send.js';
+import { runSummary } from './summary.js';
+import { runCommand } from './run.js';
+import { selectOne, canPrompt } from './prompts.js';
+import { runReconnect, runDisconnect, runDelete, runStatusOne, runDefault, runRename } from './sessions.js';
 import { runInit } from './init.js';
 import { runDoctor } from './doctor.js';
 import { runRegister } from './register.js';
@@ -33,10 +36,15 @@ const COMMANDS = [
   'reconnect',
   'disconnect',
   'delete',
+  'rename',
   'numbers',
   'default',
   'send',
   'send-bulk',
+  'presence',
+  'me',
+  'run',
+  'summary',
   'scheduled',
   'recent',
   'settings',
@@ -124,15 +132,56 @@ interface ScheduledItem {
   status: string;
 }
 
+/** One pending send as a menu row: when, to whom, what kind. Pure, for tests. */
+export function scheduledChoiceLabel(s: ScheduledItem): string {
+  return `${s.fireAt}  →  ${s.toName} (${s.kind})`;
+}
+
 async function runScheduled(args: string[]): Promise<number> {
   const sub = args[1];
   if (sub === 'cancel') {
-    const id = args[2];
+    let id = args[2];
     intro('whatsappman — scheduled cancel');
+    // No id: pick from what is actually pending. A scheduled id is a UUID —
+    // nobody types one from memory, they copy it from a list, so show the list.
     if (!id) {
-      fail('usage: whatsappman scheduled cancel <id>');
-      outro('scheduled');
-      return 1;
+      if (!canPrompt('usage: whatsappman scheduled cancel <id>')) {
+        outro('scheduled');
+        return 1;
+      }
+      try {
+        // Fetch every entry, not just pending, so an empty result can explain
+        // itself: `whatsappman scheduled` may well have just shown you rows,
+        // and "nothing pending" next to them reads like a bug unless we say
+        // those rows are already sent and there is nothing left to cancel.
+        const { scheduled: all } = await request<{ scheduled: ScheduledItem[] }>('list_scheduled');
+        const scheduled = all.filter((s) => s.status === 'pending');
+        if (scheduled.length === 0) {
+          section('scheduled');
+          if (all.length) {
+            const done = all.map((s) => s.status).filter((v, i, a) => a.indexOf(v) === i).join('/');
+            row(`nothing pending to cancel — all ${all.length} are already ${done}`);
+          } else {
+            row('nothing scheduled');
+          }
+          outro('scheduled');
+          return 0;
+        }
+        const picked = await selectOne(
+          'Cancel which scheduled send?',
+          scheduled.map((s) => ({ value: s.scheduledId, label: scheduledChoiceLabel(s) })),
+        );
+        if (!picked) {
+          outro('scheduled');
+          return 1;
+        }
+        id = picked;
+      } catch (err) {
+        if (err instanceof WhatsAppManError) fail(`${err.code}: ${err.message}`);
+        else throw err;
+        outro('scheduled');
+        return 1;
+      }
     }
     try {
       await request('cancel_scheduled', { scheduledId: id });
@@ -211,19 +260,27 @@ function printHelp(): void {
   section('numbers');
   row('link [--label n]     link a number (scan a QR); pass --label to add MORE');
   row('     [--image]       open the QR as an image instead of drawing it in the terminal');
-  row('relink <label>       re-pair an expired number (fresh QR); --image works here too');
-  row('reconnect <label>    reconnect a dropped session');
-  row('disconnect <label>   drop the socket, keep creds');
-  row('delete <label>       permanently remove a number (--yes)');
+  row('relink [<label>]     re-pair an expired number (fresh QR); --image works here too');
+  row('reconnect [<label>]  reconnect a dropped session');
+  row('disconnect [<label>] drop the socket, keep creds');
+  row('rename [<label> <new>]  rename a number (keeps creds + history)');
+  row('delete [<label>]     permanently remove a number (--yes)');
   row('numbers              list linked numbers + status');
-  row('status <label>       detail for one number');
-  row('default <label>      set the default number for sends');
+  row('status [<label>]     detail for one number');
+  row('default [<label>]    set the default number for sends');
+  row('(omit <label> on any of these to pick from a list instead of typing it)');
   section('send');
   row('send <to> <text> [--from <label>]');
   row('send <to> --kind image|document --path <file> [--caption c]');
   row('send <to> --kind location --lat <n> --lng <n> [--name p]');
   row('send <to> --kind contact --contact-name n --contact-phone p');
   row('send-bulk <text> --to <a,b,c> [--from <label>]');
+  row('presence <to> <typing|online|offline|recording|paused> [--from label]');
+  row('me <text>            message yourself (note-to-self inbox)');
+  section('daily');
+  row('run [--to r] [--on-fail] -- <command>   run it, then WhatsApp how it went');
+  row('summary [--to r]     digest of your AI coding sessions (this project)');
+  row('        [--all] [--project p] [--days N] [--last N]   widen the digest');
   section('scheduled');
   row('scheduled            list scheduled sends');
   row('scheduled cancel <id>  cancel a pending scheduled send');
@@ -236,6 +293,9 @@ function printHelp(): void {
   row('help             this list');
   row('examples         setup + usage examples');
   row('version          print version');
+  section('prompts');
+  row('any command that needs a value will ask for it — arrow keys to choose,');
+  row('Enter to confirm, and Esc (or Ctrl-C) to cancel and change nothing.');
   outro('help');
 }
 
@@ -337,36 +397,16 @@ export async function cliMain(args: string[]): Promise<number> {
       return runDelete(args[1], yes);
     }
 
+    case 'rename':
+      return runRename(args[1], args[2]);
+
     case 'numbers':
     case 'list':
       await runNumbers();
       return 0;
 
-    case 'default': {
-      const label = args[1];
-      intro('whatsappman — default');
-      if (!label) {
-        fail('usage: whatsappman default <label>');
-        outro('default');
-        return 1;
-      }
-      try {
-        const res = await request<{ defaultSession: string }>('set_default', { label });
-        section('default');
-        row(`default number set to "${res.defaultSession}"`);
-        outro('default');
-        return 0;
-      } catch (err) {
-        if (err instanceof WhatsAppManError) {
-          fail(`${err.code}: ${err.message}`);
-          for (const step of err.nextSteps ?? []) row(step);
-        } else {
-          throw err;
-        }
-        outro('default');
-        return 1;
-      }
-    }
+    case 'default':
+      return runDefault(args[1]);
 
     case 'send': {
       const from = takeFlag(args, '--from');
@@ -428,6 +468,83 @@ export async function cliMain(args: string[]): Promise<number> {
       }
       const recipients = toCsv.split(',').map((r) => r.trim()).filter(Boolean);
       return runSendBulk(recipients, text, from, raw);
+    }
+
+    case 'me': {
+      const from = takeFlag(args, '--from');
+      const text = unescape(args.slice(1).join(' '));
+      if (!text) {
+        intro('whatsappman — me');
+        fail('usage: whatsappman me <text> [--from <label>]');
+        outro('me');
+        return 1;
+      }
+      return runMe(text, from);
+    }
+
+    case 'run': {
+      const to = takeFlag(args, '--to');
+      const from = takeFlag(args, '--from');
+      const quiet = hasFlag(args, '--quiet');
+      const onFail = hasFlag(args, '--on-fail');
+      // Everything after `--` is the command; without it, the rest of argv is.
+      const sep = args.indexOf('--');
+      const cmd = sep === -1 ? args.slice(1) : args.slice(sep + 1);
+      return runCommand(cmd, { to, from, quiet, onFail });
+    }
+
+    case 'summary': {
+      const to = takeFlag(args, '--to');
+      const from = takeFlag(args, '--from');
+      const project = takeFlag(args, '--project');
+      const last = takeFlag(args, '--last');
+      const days = takeFlag(args, '--days');
+      const max = takeFlag(args, '--max');
+      const all = hasFlag(args, '--all');
+      return runSummary({
+        all,
+        project,
+        to,
+        from,
+        last: last != null ? Number(last) : undefined,
+        days: days != null ? Number(days) : undefined,
+        max: max != null ? Number(max) : undefined,
+      });
+    }
+
+    case 'presence': {
+      const from = takeFlag(args, '--from');
+      const to = args[1];
+      let kind = args[2];
+      if (!to) {
+        intro('whatsappman — presence');
+        fail('usage: whatsappman presence <to> <typing|online|offline|recording|paused> [--from <label>]');
+        outro('presence');
+        return 1;
+      }
+      // The recipient must be explicit (we won't guess who to signal), but the
+      // state is a closed set — offer it rather than make you recall the words.
+      if (!kind) {
+        intro('whatsappman — presence');
+        if (!canPrompt('usage: whatsappman presence <to> <typing|online|offline|recording|paused>')) {
+          outro('presence');
+          return 1;
+        }
+        const picked = await selectOne('Which presence?', [
+          { value: 'typing', label: 'typing', hint: 'shows "typing…"' },
+          { value: 'recording', label: 'recording', hint: 'shows "recording audio…"' },
+          { value: 'online', label: 'online', hint: 'appear available' },
+          { value: 'offline', label: 'offline', hint: 'appear unavailable' },
+          { value: 'paused', label: 'paused', hint: 'stop the indicator' },
+        ]);
+        if (!picked) {
+          outro('presence');
+          return 1;
+        }
+        kind = picked;
+        return runPresence(to, kind, from, true); // intro already printed above
+      }
+      return runPresence(to, kind, from);
     }
 
     case 'start': {

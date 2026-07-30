@@ -1,6 +1,7 @@
 import { intro, outro, section, fact, row, attention, fail } from './tree.js';
 import { request } from '../ipc/client.js';
 import { WhatsAppManError } from '../errors.js';
+import type { SessionSummary } from '../status.js';
 
 interface SendResult {
   label: string;
@@ -91,10 +92,96 @@ export async function runSendMedia(opts: MediaSendOpts): Promise<number> {
   }
 }
 
+/**
+ * `whatsappman me <text>` — message yourself, the note-to-self inbox
+ * (docs/USE-CASES.md #137, #141). Resolves the sending number's OWN phone, so
+ * you never have to remember or type it: the message lands in your own chat.
+ */
+export async function runMe(text: string, from?: string): Promise<number> {
+  intro('whatsappman — me');
+  try {
+    const { sessions } = await request<{ sessions: SessionSummary[] }>('list_sessions');
+    const mine = from
+      ? sessions.find((s) => s.label === from)
+      : (sessions.find((s) => s.isDefault) ?? (sessions.length === 1 ? sessions[0] : undefined));
+    if (!mine) {
+      fail(from ? `no number labelled "${from}"` : 'no default number set — run: whatsappman default');
+      outro('me');
+      return 1;
+    }
+    if (!mine.phone) {
+      fail(`"${mine.label}" has no resolved phone number yet (is it connected?)`);
+      row(`run: whatsappman status ${mine.label}`);
+      outro('me');
+      return 1;
+    }
+    const res = await request<SendResult>('send_text', { from: mine.label, to: mine.phone, text });
+    section('sent');
+    fact(`note to self via "${res.label}"`, true);
+    row(`message id: ${res.messageId}`);
+    outro('me');
+    return 0;
+  } catch (err) {
+    return reportSendError(err, 'me');
+  }
+}
+
+interface PresenceResult {
+  label: string;
+  toJid: string;
+  toName: string;
+  presence: string;
+}
+
+/** Friendly aliases → the canonical Baileys presence states. Lets a user type
+ *  the obvious word (`typing`, `online`) instead of Baileys' `composing` etc. */
+export const PRESENCE_ALIASES: Record<string, 'available' | 'unavailable' | 'composing' | 'recording' | 'paused'> = {
+  typing: 'composing',
+  composing: 'composing',
+  online: 'available',
+  available: 'available',
+  offline: 'unavailable',
+  unavailable: 'unavailable',
+  recording: 'recording',
+  paused: 'paused',
+  stop: 'paused',
+};
+
+/**
+ * Send a presence indicator ("typing…"/online/…) to a recipient — a status
+ * signal, not a message: no content is delivered. Handy in scripts to show a
+ * human-like "typing…" just before a `send`.
+ */
+export async function runPresence(
+  to: string,
+  kind: string,
+  from?: string,
+  alreadyIntroed = false,
+): Promise<number> {
+  if (!alreadyIntroed) intro('whatsappman — presence');
+  const presence = PRESENCE_ALIASES[kind?.toLowerCase()];
+  if (!presence) {
+    fail(`unknown presence "${kind}" — use one of: typing, online, offline, recording, paused`);
+    outro('presence');
+    return 1;
+  }
+  try {
+    const res = await request<PresenceResult>('send_presence', { from, to, presence });
+    section('presence');
+    fact(`"${res.presence}" → ${res.toName} via "${res.label}"`, true);
+    outro('presence');
+    return 0;
+  } catch (err) {
+    return reportSendError(err, 'presence');
+  }
+}
+
 interface BulkResult {
   label: string;
   sent: number;
   failed: number;
+  skipped?: number;
+  aborted?: string | null;
   results: Array<{ to: string; status: string; error?: string }>;
 }
 
@@ -104,9 +191,18 @@ export async function runSendBulk(recipients: string[], text: string, from?: str
   try {
     const res = await request<BulkResult>('send_bulk', { from, to: recipients, text, raw });
     section('bulk result');
-    fact(`via "${res.label}": ${res.sent} sent, ${res.failed} failed`, res.failed === 0);
+    const skipped = res.skipped ?? 0;
+    const tally = `${res.sent} sent, ${res.failed} failed${skipped ? `, ${skipped} skipped` : ''}`;
+    fact(`via "${res.label}": ${tally}`, res.failed === 0);
+    // An aborted batch is the headline, not a footnote: the remaining
+    // recipients were never contacted, and the reason is a ban risk.
+    if (res.aborted) {
+      attention(res.aborted);
+      attention(`${skipped} recipient(s) were NOT contacted — re-run for them once the number is healthy`);
+    }
     for (const r of res.results) {
       if (r.status === 'failed') attention(`${r.to}: ${r.error ?? 'failed'}`);
+      else if (r.status === 'skipped') row(`${r.to}: skipped (batch stopped)`);
       else row(`${r.to}: sent`);
     }
     outro('send-bulk');

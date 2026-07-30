@@ -20,6 +20,7 @@ export const METHODS = [
   'list_sessions',
   'send_text',
   'send_bulk',
+  'send_presence',
   'draft_message',
   'confirm_send',
   'cancel_draft',
@@ -31,6 +32,7 @@ export const METHODS = [
   'disconnect',
   'relink',
   'delete_session',
+  'rename_session',
   'schedule_send',
   'list_scheduled',
   'cancel_scheduled',
@@ -109,6 +111,25 @@ const sendBulkParams = z.object({
 });
 export type SendBulkParams = z.infer<typeof sendBulkParams>;
 
+/** WhatsApp presence states Baileys can send. `composing` = "typing…",
+ *  `recording` = "recording audio…", `available`/`unavailable` = online/offline,
+ *  `paused` = stop the typing indicator. No message content is delivered. */
+export const PRESENCE_TYPES = ['available', 'unavailable', 'composing', 'recording', 'paused'] as const;
+export type PresenceType = (typeof PRESENCE_TYPES)[number];
+
+const sendPresenceParams = z.object({
+  from: z.string().min(1).optional(),
+  to: z.string().min(1),
+  presence: z.enum(PRESENCE_TYPES),
+});
+export type SendPresenceParams = z.infer<typeof sendPresenceParams>;
+
+const renameSessionParams = z.object({
+  oldLabel: z.string().min(1),
+  newLabel: z.string().min(1),
+});
+export type RenameSessionParams = z.infer<typeof renameSessionParams>;
+
 const draftIdParam = z.object({ draftId: z.string().min(1) });
 const resolveParams = z.object({ from: z.string().min(1).optional(), query: z.string().min(1) });
 const fromParam = z.object({ from: z.string().min(1).optional() }).or(z.undefined());
@@ -148,6 +169,7 @@ export const paramsSchemas: Record<Method, z.ZodType> = {
   list_sessions: noParams,
   send_text: sendTextParams,
   send_bulk: sendBulkParams,
+  send_presence: sendPresenceParams,
   draft_message: draftMessageParams,
   confirm_send: draftIdParam,
   cancel_draft: draftIdParam,
@@ -159,6 +181,7 @@ export const paramsSchemas: Record<Method, z.ZodType> = {
   disconnect: labelParam,
   relink: labelParam,
   delete_session: labelParam,
+  rename_session: renameSessionParams,
   schedule_send: scheduleSendParams,
   list_scheduled: listScheduledParams,
   cancel_scheduled: cancelScheduledParams,

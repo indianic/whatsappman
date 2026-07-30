@@ -4,6 +4,7 @@ import { removeStaleSocket, secureSocketFile } from './transport.js';
 import {
   requestSchema,
   paramsSchemas,
+  METHODS,
   type IpcResponse,
   type Method,
 } from './protocol.js';
@@ -39,6 +40,24 @@ async function handleLine(
     }
     const parsed = requestSchema.safeParse(json);
     if (!parsed.success) {
+      // `method` is a z.enum, so a method this build has never heard of fails
+      // HERE rather than at the handler lookup below — which used to report a
+      // flat "malformed request". That is exactly what a long-running daemon
+      // tells a freshly-updated CLI, and it sends you hunting for a bug in your
+      // arguments instead of restarting the daemon. Name the real cause.
+      const m = (json as { method?: unknown })?.method;
+      if (typeof m === 'string' && !(METHODS as readonly string[]).includes(m)) {
+        send(sock, {
+          id,
+          ok: false,
+          error: {
+            code: ErrorCode.UNKNOWN_METHOD,
+            message: `this daemon does not support "${m}" — it is running an older build than your CLI`,
+            next_steps: ['run: whatsappman restart'],
+          },
+        });
+        return;
+      }
       send(sock, { id, ok: false, error: { code: ErrorCode.BAD_REQUEST, message: 'malformed request' } });
       return;
     }

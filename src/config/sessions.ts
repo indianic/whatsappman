@@ -73,6 +73,26 @@ export function deleteSessionDir(label: string): void {
   fs.rmSync(sessionDir(label), { recursive: true, force: true });
 }
 
+/** Does a session folder exist on disk for this label? */
+export function sessionExists(label: string): boolean {
+  try {
+    return fs.statSync(sessionDir(label)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Move a session folder to a new label and rewrite its meta's `label` field, so
+ * the number keeps its creds + history under the new name. Caller must have
+ * validated both labels and closed any live socket first.
+ */
+export function renameSessionDir(oldLabel: string, newLabel: string): void {
+  fs.renameSync(sessionDir(oldLabel), sessionDir(newLabel));
+  const meta = readMeta(newLabel); // now readable at the new path
+  if (meta) writeMeta({ ...meta, label: newLabel });
+}
+
 /** Create the meta for a brand-new session in the qr_pending state. */
 export function initialMeta(label: string): SessionMeta {
   return {

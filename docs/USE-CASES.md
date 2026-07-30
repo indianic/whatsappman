@@ -24,7 +24,30 @@ Automation works while an AI still cannot send anything you haven't seen.
 
 The building blocks: `send` (text/image/document/location/contact), `send-bulk`,
 `schedule_send` (one-shot), multi-number `--from` routing, `list_groups`,
-`health_check`, `recent`.
+`health_check`, `recent`, plus three daily drivers — `run` (run a command, get
+told how it went), `summary` (a digest of your AI coding sessions) and `me`
+(note-to-self).
+
+**A note on the ✅ rows below.** Most of them are "wire `send` into the tool you
+already use". Two commands make the highest-traffic ones turnkey:
+
+```bash
+whatsappman run --to "Me" -- ./train.sh      # #138 #246 #249 #250 — success AND failure
+whatsappman run --on-fail --to "DevOps" -- ./deploy.sh   # #1 #2 #13 — page only on break
+```
+
+`run` matters because the failure branch is the one people forget: hand-wiring
+`&& whatsappman send …` notifies you when a job *succeeds*, and stays silent
+exactly when you needed to know.
+
+The `.sh` files in the examples throughout this doc are **your** scripts, not
+whatsappman's — it ships no shell scripts and runs whatever you hand it. On
+Windows the same cases work with whatever you actually run there:
+
+```bash
+whatsappman run --to "Me" -- npm test
+whatsappman run --on-fail --to "DevOps" -- powershell -File .\deploy.ps1
+```
 
 ---
 
@@ -270,8 +293,10 @@ whatsappman recent --limit 50 --from work
 | 142 | Share your live location to a family group | ✅ |
 
 ```bash
-./train-model.sh && whatsappman send "Me" "training done — $(date +%H:%M)"
+whatsappman run --to "Me" -- ./train-model.sh   # #138: reports success AND failure
+whatsappman me "remember to review the PR"      # #137: note-to-self, no number to type
 whatsappman send "Me" --kind document --path ~/report.pdf
+whatsappman summary --all --days 1 --to "Me"    # today's work digest, every project
 ```
 
 ## 15. Multi-number & agency setups
@@ -369,14 +394,20 @@ already pins it. Rules for any inbound work:
 
 ## 19. WhatsApp features not yet exposed 🔨
 
-Baileys supports these; the daemon doesn't surface them. Each is a small,
-self-contained addition.
+Baileys supports these; the daemon doesn't surface them yet — except **#173
+(presence), now shipped** as `whatsappman presence`. Each remaining one is a
+small, self-contained addition.
+
+```bash
+# show "typing…" for a moment, then send — a human-like touch in a script
+whatsappman presence "+91…" typing --from work && sleep 2 && whatsappman send "+91…" "on my way"
+```
 
 | # | Case | Needs |
 |---|---|---|
 | 171 | React to a message with an emoji | `sendReaction` + a target message key (inbound) |
 | 172 | Mark messages as read | `readMessages` + inbound message keys |
-| 173 | Typing / online presence indicator | `sendPresenceUpdate` (chat id only — no target message) |
+| 173 | Typing / online presence indicator | ✅ **shipped** — `whatsappman presence <to> typing\|online\|offline\|recording\|paused` |
 | 174 | Create a group programmatically | `groupCreate` |
 | 175 | Add or remove group participants | `groupParticipantsUpdate` |
 | 176 | Download media from an inbound message | `downloadMediaMessage` + inbound |
@@ -516,7 +547,7 @@ Any sensor or controller that can run a command (or hit a webhook) can page you.
 | 1 | Recurring schedules (#153–155) | Self-contained, no security implications, removes the OS-cron dependency from ~40 cases above |
 | 2 | Inbound read-only (#156–158, #160) | High value; ship reading before any replying |
 | 3 | Gated reply (#159, #162, #163) | Only after §18 is settled and evals extended |
-| 4 | Presence indicator (#173) | Truly standalone — `sendPresenceUpdate` takes only a chat id, no target message, no new data. (#171/#172/#181 *look* like quick wins but each needs a target message key, so they ride on the inbound work in row 2, not here.) |
+| ✅ done | Presence indicator (#173) | Shipped as `whatsappman presence`. Was the one truly standalone item — chat id only, no target message, no new data. (#171/#172/#181 *look* like quick wins but each needs a target message key, so they ride on the inbound work in row 2.) |
 | 5 | Attachment intake (#164) | Reuses the existing path guard |
 
 ## Related

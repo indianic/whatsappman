@@ -21,6 +21,8 @@ import type {
   Method,
   SendTextParams,
   SendBulkParams,
+  SendPresenceParams,
+  RenameSessionParams,
   DraftMessageParams,
   ScheduleSendParams,
   ListRecentParams,
@@ -97,6 +99,13 @@ export async function runDaemon(): Promise<void> {
       },
     ],
     [
+      'send_presence',
+      async (params) => {
+        const p = params as SendPresenceParams;
+        return sm.sendPresence(labelFrom(p.from), p.to, p.presence);
+      },
+    ],
+    [
       'reconnect',
       async (params) => {
         const label = normalizeLabel((params as { label: string }).label);
@@ -119,6 +128,13 @@ export async function runDaemon(): Promise<void> {
     [
       'delete_session',
       (params) => sm.deleteSession(normalizeLabel((params as { label: string }).label)),
+    ],
+    [
+      'rename_session',
+      async (params) => {
+        const p = params as RenameSessionParams;
+        return sm.renameSession(normalizeLabel(p.oldLabel), normalizeLabel(p.newLabel));
+      },
     ],
     ['health_check', (params) => sm.healthCheck(labelFrom((params as { from?: string })?.from))],
     [
