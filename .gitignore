@@ -10,3 +10,6 @@ dist/
 # agent-tool scratch, never part of the source tree
 .remember/
 smoke/cast/
+
+# Personal task runner — local to this machine, see the header inside it
+/services.sh

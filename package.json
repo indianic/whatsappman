@@ -31,7 +31,7 @@
     "cast": "node smoke/record-cast.mjs",
     "cast:redact": "node smoke/record-cast.mjs --redact",
     "check:term": "./smoke/check-terminal.sh",
-    "services": "./scripts/services.sh"
+    "services": "./services.sh"
   },
   "engines": {
     "node": ">=18"
