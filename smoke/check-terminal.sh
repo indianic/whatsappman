@@ -56,6 +56,8 @@ h() { echo ""; echo "  ${BOLD}${B}━━ $1${RST}"; }
 # ── Args ──────────────────────────────────────────────────────────────────────
 MODE="local"
 PACE="1.2"
+KEEP=0
+REDACT=0
 IDLE_LIMIT=120
 HARD_LIMIT=900
 for arg in "$@"; do
@@ -65,7 +67,8 @@ for arg in "$@"; do
     --pace=*) PACE="${arg#*=}" ;;
     --idle=*) IDLE_LIMIT="${arg#*=}" ;;
     --hard=*) HARD_LIMIT="${arg#*=}" ;;
-    --keep)   : ;;
+    --keep)   KEEP=1 ;;
+    --redact) REDACT=1 ;;
     *) ;;
   esac
 done
@@ -81,6 +84,8 @@ done
 SESSION="wam-term-$(date +%H%M%S)"
 WORK_DIR="$(mktemp -d "/tmp/${SESSION}.XXXX")"
 LOG="$WORK_DIR/run.log"
+PIDFILE="$WORK_DIR/shell.pid"
+SHOT="$WORK_DIR/audit.png"
 INNER="$WORK_DIR/run.sh"
 
 echo ""
@@ -186,7 +191,11 @@ echo "  ${BOLD}Result:${RST}  ${G}${OK} ok${RST}   ${R}${BAD} failed${RST}"
 echo ""
 echo "━━ DONE ━━"
 echo ""
-echo "  ${DIM}This window stays open so you can scroll back. Close it when finished.${RST}"
+echo "  ${DIM}Window stays open until the audit finishes capturing it.${RST}"
+# Record the shell's pid. `exec` replaces this process image, so the pid is
+# unchanged — the parent kills it before closing the window, which is what stops
+# Terminal.app popping "closing this window will terminate the running process".
+echo $$ > "__PIDFILE__"
 exec $SHELL
 INNER_EOF
 
@@ -221,7 +230,7 @@ tmp="$INNER.tmp"
   while IFS= read -r line; do
     case "$line" in
       *__STEPS__*) printf '%s\n' "$STEPS" ;;
-      *) printf '%s\n' "${line//__LOG__/$LOG}" ;;
+      *) line="${line//__LOG__/$LOG}"; printf '%s\n' "${line//__PIDFILE__/$PIDFILE}" ;;
     esac
   done < "$INNER"
 } > "$tmp"
@@ -234,8 +243,38 @@ p "run script written" "$(grep -c '^step ' "$INNER" 2>/dev/null || echo 1) step(
 h "3. OPEN A FRESH TERMINAL WINDOW"
 # ══════════════════════════════════════════════════════════════════════════════
 
-if osascript -e "tell application \"Terminal\" to do script \"bash '$INNER'\"" >/dev/null 2>&1; then
-  p "Terminal.app window opened" "watch the commands run there"
+# Identify the new window by DIFFING the window list, not by asking for the
+# front window.
+#
+# `id of front window` immediately after `do script` returns the window that was
+# frontmost BEFORE the new one appeared — verified here: the new window was
+# 32247 while front window reported 32218. Every downstream use of that id then
+# targets somebody else's window, which is how an earlier version of this
+# screenshotted an unrelated Downloads window and reported the audit window as
+# still open. Set arithmetic has no such race.
+BEFORE_IDS=$(osascript -e 'tell application "Terminal" to get id of every window' 2>/dev/null | tr -d ' ' | tr ',' '\n' | sort)
+osascript -e "tell application \"Terminal\" to do script \"bash '$INNER'\"" >/dev/null 2>&1
+sleep 0.8
+AFTER_IDS=$(osascript -e 'tell application "Terminal" to get id of every window' 2>/dev/null | tr -d ' ' | tr ',' '\n' | sort)
+WIN_ID=$(comm -13 <(printf '%s\n' "$BEFORE_IDS") <(printf '%s\n' "$AFTER_IDS") | head -1)
+# Hard guard: only ever act on a window that did not exist before we started.
+#
+# This is not paranoia. An earlier version resolved the wrong id, and its
+# tty-hangup fallback killed a window the user had open and was using. Every
+# destructive step below — pkill, close — is gated on this, so the worst a bad
+# id can now do is leave our own window open.
+if [[ -n "${WIN_ID:-}" ]] && printf '%s\n' "$BEFORE_IDS" | grep -qx "$WIN_ID"; then
+  w "window id looks pre-existing" "refusing to manage it — the window will be left open"
+  WIN_ID=""
+  OURS=0
+elif [[ -n "${WIN_ID:-}" ]]; then
+  OURS=1
+else
+  OURS=0
+fi
+
+if [[ -n "${WIN_ID:-}" ]]; then
+  p "Terminal.app window opened" "window id ${WIN_ID} — watch the commands run there"
   osascript -e 'tell application "Terminal" to activate' >/dev/null 2>&1
 else
   f "Terminal.app" "could not open a window"
@@ -272,7 +311,66 @@ echo ""
 $DONE && p "run completed" "window left open for scrollback"
 
 # ══════════════════════════════════════════════════════════════════════════════
-h "5. VERDICT"
+h "5. CAPTURE + CLOSE"
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Render the captured output to an image.
+#
+# The obvious approach — screencapture -l<window-id> — was tried and REMOVED.
+# The id AppleScript reports for a Terminal window is not the CoreGraphics
+# window id that screencapture -l expects, so it silently photographs whatever
+# unrelated window happens to hold that id: a run of this audit produced a
+# perfectly sharp screenshot of a Downloads window. A wrong image that looks
+# right is worse than no image, and it also needs Screen Recording permission
+# that CI will never have.
+#
+# So the log is rendered through headless Chrome instead. Not a photograph of
+# the window — a faithful rendering of what the window showed, which for
+# reviewing a run is the same information, and it is deterministic, needs no
+# permission, and works where there is no window to photograph at all.
+RARGS=()
+[[ "$REDACT" == "1" ]] && RARGS+=(--redact)
+if node "$SCRIPT_DIR/log-to-png.mjs" "$LOG" "$SHOT" "whatsappman — command audit" "${RARGS[@]:-}" >/dev/null 2>&1 && [[ -s "$SHOT" ]]; then
+  SHOT_KIND="rendered from the run log"
+  p "captured the output" "$(du -h "$SHOT" | cut -f1)$([[ "$REDACT" == "1" ]] && echo " ${DIM}(redacted)${RST}")"
+else
+  w "capture" "could not render an image from the log"
+fi
+
+if [[ "$KEEP" == "1" ]]; then
+  p "window left open" "--keep was passed"
+elif [[ "${OURS:-0}" != "1" ]]; then
+  w "not closing" "could not confirm the window is one we opened"
+else
+  # `saving no` is the part that matters. Terminal runs `do script` inside a
+  # LOGIN SHELL, so killing the audit script still leaves that shell alive, and
+  # a plain `close` on a window with a live process silently does nothing —
+  # Terminal is waiting on a "terminate the running process?" dialog nobody is
+  # there to answer. `saving no` answers it.
+  #
+  # The window is targeted BY ID, never "front window": by the time this runs
+  # the user may well have clicked onto a different one, and closing that would
+  # be an unpleasant surprise.
+  [[ -f "$PIDFILE" ]] && kill "$(cat "$PIDFILE")" 2>/dev/null
+  sleep 0.3
+  osascript -e "tell application \"Terminal\" to close (every window whose id is ${WIN_ID:-0}) saving no" >/dev/null 2>&1
+  sleep 0.5
+  # Last resort: hang up everything on that window's tty.
+  if ! osascript -e "tell application \"Terminal\" to (count of (every window whose id is ${WIN_ID:-0}))" 2>/dev/null | grep -q '^0$'; then
+    TTY=$(osascript -e "tell application \"Terminal\" to get tty of front tab of (first window whose id is ${WIN_ID:-0})" 2>/dev/null)
+    [[ -n "$TTY" ]] && pkill -t "${TTY#/dev/}" 2>/dev/null
+    sleep 0.5
+    osascript -e "tell application \"Terminal\" to close (every window whose id is ${WIN_ID:-0}) saving no" >/dev/null 2>&1
+  fi
+  if osascript -e "tell application \"Terminal\" to (count of (every window whose id is ${WIN_ID:-0}))" 2>/dev/null | grep -q '^0$'; then
+    p "window closed" "capture kept at $(basename "$SHOT")"
+  else
+    w "window still open" "close it manually — it may have unsaved state"
+  fi
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
+h "6. VERDICT"
 # ══════════════════════════════════════════════════════════════════════════════
 
 if [[ ! -s "$LOG" ]]; then
@@ -293,6 +391,7 @@ fi
 
 echo ""
 echo "  ${G}✔ $PASS passed${RST}  ${R}✘ $FAIL failed${RST}  ${Y}⚠ $WARN warnings${RST}"
-echo "  ${DIM}Log:${RST} ${C}$LOG${RST}"
+echo "  ${DIM}Log:${RST}   ${C}$LOG${RST}"
+[[ -s "$SHOT" ]] && echo "  ${DIM}Image:${RST} ${C}$SHOT${RST} ${DIM}(${SHOT_KIND})${RST}"
 echo ""
 [[ "$FAIL" -eq 0 ]] && exit 0 || exit 1
