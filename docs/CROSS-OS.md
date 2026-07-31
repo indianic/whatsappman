@@ -157,3 +157,32 @@ Marked done only after a real run on that OS:
 - [ ] Ubuntu / Xubuntu — systemd `--user` + linger, send, reconnect
 - [ ] Alpine — OpenRC / `nohup` fallback, send **without** keytar (plaintext-creds path + warning)
 - [ ] Headless server over SSH — QR pairing in a terminal, no GUI
+
+
+## Why Windows is not a container
+
+The obvious question, asked more than once: we containerise everything else, so
+why not Windows? Because it is not possible on a Mac, for two independent
+reasons — both measured, not assumed:
+
+```
+$ docker version --format '{{.Server.Os}}/{{.Server.Arch}}'
+linux/arm64
+
+$ docker pull mcr.microsoft.com/windows/nanoserver:ltsc2022
+Error response from daemon: no matching manifest for linux/arm64/v8
+
+$ docker manifest inspect mcr.microsoft.com/windows/nanoserver:ltsc2022
+  windows amd64 10.0.20348.5386      <- the only platform offered
+```
+
+1. **Containers share the host kernel.** Docker Desktop on macOS runs a *Linux*
+   VM, so a Windows container has no Windows kernel to share. This is the whole
+   container model, not a Docker limitation to route around.
+2. **Architecture.** The image is amd64-only; the machine is arm64. Fixing this
+   would not help, because (1) still stands.
+
+Windows containers do work — on a Windows host. Absent one, the `windows-latest`
+GitHub Actions runner is what proves Windows, and it is *better* evidence than a
+container: a real OS rather than a shared kernel. It is what caught both
+Windows-only bugs this project has had.

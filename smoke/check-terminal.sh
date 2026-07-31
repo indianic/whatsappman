@@ -85,6 +85,7 @@ SESSION="wam-term-$(date +%H%M%S)"
 WORK_DIR="$(mktemp -d "/tmp/${SESSION}.XXXX")"
 LOG="$WORK_DIR/run.log"
 PIDFILE="$WORK_DIR/shell.pid"
+TTYFILE="$WORK_DIR/shell.tty"
 SHOT="$WORK_DIR/audit.png"
 INNER="$WORK_DIR/run.sh"
 
@@ -196,6 +197,7 @@ echo "  ${DIM}Window stays open until the audit finishes capturing it.${RST}"
 # unchanged — the parent kills it before closing the window, which is what stops
 # Terminal.app popping "closing this window will terminate the running process".
 echo $$ > "__PIDFILE__"
+tty > "__TTYFILE__" 2>/dev/null
 exec $SHELL
 INNER_EOF
 
@@ -230,7 +232,7 @@ tmp="$INNER.tmp"
   while IFS= read -r line; do
     case "$line" in
       *__STEPS__*) printf '%s\n' "$STEPS" ;;
-      *) line="${line//__LOG__/$LOG}"; printf '%s\n' "${line//__PIDFILE__/$PIDFILE}" ;;
+      *) line="${line//__LOG__/$LOG}"; line="${line//__PIDFILE__/$PIDFILE}"; printf '%s\n' "${line//__TTYFILE__/$TTYFILE}" ;;
     esac
   done < "$INNER"
 } > "$tmp"
@@ -342,30 +344,58 @@ if [[ "$KEEP" == "1" ]]; then
 elif [[ "${OURS:-0}" != "1" ]]; then
   w "not closing" "could not confirm the window is one we opened"
 else
-  # `saving no` is the part that matters. Terminal runs `do script` inside a
-  # LOGIN SHELL, so killing the audit script still leaves that shell alive, and
-  # a plain `close` on a window with a live process silently does nothing —
-  # Terminal is waiting on a "terminate the running process?" dialog nobody is
-  # there to answer. `saving no` answers it.
+  # Closing is ASYNCHRONOUS and `saving no` is what makes it happen at all.
   #
-  # The window is targeted BY ID, never "front window": by the time this runs
-  # the user may well have clicked onto a different one, and closing that would
-  # be an unpleasant surprise.
+  # Terminal runs `do script` inside a login shell, so killing the audit script
+  # leaves that shell alive, and a plain `close` on a window with a live process
+  # silently does nothing — Terminal is waiting on a "terminate the running
+  # process?" dialog nobody is there to answer. `saving no` answers it.
+  #
+  # But it returns rc=0 immediately and the window can take a couple of seconds
+  # to actually go. Checking once, half a second later, reported "still open"
+  # for a window that closed fine a moment afterwards. So this polls.
+  #
+  # Everything here is gated on OURS: only a window that did not exist before
+  # this script started is ever killed or closed.
   [[ -f "$PIDFILE" ]] && kill "$(cat "$PIDFILE")" 2>/dev/null
   sleep 0.3
+
+  win_count() {
+    osascript -e "tell application \"Terminal\" to (count of (every window whose id is ${WIN_ID:-0}))" 2>/dev/null || echo 1
+  }
+
+  CLOSED=0
+  # Terminal's close is asynchronous and can take a good while — a run here
+  # reported "still open" after six seconds for a window that had gone by the
+  # time it was checked again. Ask once, then wait properly.
   osascript -e "tell application \"Terminal\" to close (every window whose id is ${WIN_ID:-0}) saving no" >/dev/null 2>&1
-  sleep 0.5
-  # Last resort: hang up everything on that window's tty.
-  if ! osascript -e "tell application \"Terminal\" to (count of (every window whose id is ${WIN_ID:-0}))" 2>/dev/null | grep -q '^0$'; then
-    TTY=$(osascript -e "tell application \"Terminal\" to get tty of front tab of (first window whose id is ${WIN_ID:-0})" 2>/dev/null)
-    [[ -n "$TTY" ]] && pkill -t "${TTY#/dev/}" 2>/dev/null
-    sleep 0.5
-    osascript -e "tell application \"Terminal\" to close (every window whose id is ${WIN_ID:-0}) saving no" >/dev/null 2>&1
+  for _ in $(seq 1 12); do
+    [[ "$(win_count)" == "0" ]] && { CLOSED=1; break; }
+    sleep 1
+  done
+
+  # Still there: hang up the tty. The tty comes from the INNER script, which
+  # simply ran `tty` — AppleScript's own window addressing is not dependable
+  # here (`window id N` errors -1728 for a window `count ... whose id is N`
+  # simultaneously reports as present), so it is not used for anything
+  # destructive.
+  if [[ "$CLOSED" != "1" && -s "$TTYFILE" ]]; then
+    TTY="$(cat "$TTYFILE")"
+    if [[ "$TTY" == /dev/* ]]; then
+      pkill -t "${TTY#/dev/}" 2>/dev/null
+      sleep 1
+      osascript -e "tell application \"Terminal\" to close (every window whose id is ${WIN_ID:-0}) saving no" >/dev/null 2>&1
+      for _ in 1 2 3 4 5; do
+        [[ "$(win_count)" == "0" ]] && { CLOSED=1; break; }
+        sleep 1
+      done
+    fi
   fi
-  if osascript -e "tell application \"Terminal\" to (count of (every window whose id is ${WIN_ID:-0}))" 2>/dev/null | grep -q '^0$'; then
+
+  if [[ "$CLOSED" == "1" ]]; then
     p "window closed" "capture kept at $(basename "$SHOT")"
   else
-    w "window still open" "close it manually — it may have unsaved state"
+    w "close requested" "Terminal has not closed id ${WIN_ID} yet — it usually does shortly"
   fi
 fi
 

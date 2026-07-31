@@ -30,6 +30,22 @@ watching and the caller reads the exit code and nothing else. See
 | `eval/` | `npm run eval` | Is the surface we expose still correct, safe and self-consistent — and are our stated claims still true? | Offline, fast, no daemon, **static rubrics only** |
 | `smoke/` | `npm run smoke` | Does the **actual published artifact** install and work on a real OS? | Needs network, Docker and a running daemon — so it sits **outside** `npm run verify` |
 
+### Watching it happen
+
+Two commands open a real window and step through the product while you look at
+it. Neither is an eval — they need a live install, a browser, seconds not
+milliseconds — and neither invents its own standards: they apply the **same
+rubrics** the machine-readable tiers already use, so they cannot quietly
+disagree with `npm run smoke`.
+
+| Command | Opens | Asserts |
+|---|---|---|
+| `npm run check:term` | a real Terminal window | 12 commands, one at a time, each against its `must` patterns; renders the run to an image and closes |
+| `npm run check:browser` *(site)* | a real Chrome window | every route: pathname, theme class, viewport width, accessible heading, console errors; screenshots each and closes |
+
+Add `--pace 3` to follow along more slowly, `--keep` to leave the window open,
+and `--redact` on the terminal one before sharing what it produced.
+
 `npm run cast` sits alongside `smoke/`: it drives the read-only commands under
 a **real PTY** and writes a watchable HTML player plus an asciicast. It asserts
 nothing — it produces the artefact, the way the site's contact sheet does — and

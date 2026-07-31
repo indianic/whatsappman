@@ -4,6 +4,23 @@ All notable changes to `@integratex/whatsappman` are documented here.
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-07-31
+
+- **fix(doctor): verify the autostart launcher actually resolves.** `doctor` reported *"OS autostart installed"* while the installed launcher pointed at a package path that no longer existed, so the launchd job died at every login with `ERR_MODULE_NOT_FOUND` — visible only in `daemon.err.log`. The daemon *appeared* healthy because a manual `whatsappman start` falls back to a detached spawn using the current build, so **reboot recovery was silently gone and nothing reported it.**
+  - The cause is structural: `daemon install` bakes an **absolute** path into the generated launcher, so any rename, reinstall under a different scope, or moved checkout leaves an OS job that exists, passes `isInstalled()`, and cannot start. *"The job is registered"* was being treated as *"the job works"*.
+  - `doctor` now reads the launcher, extracts the entrypoint it will import, and existence-checks it — failing with *"the daemon will NOT start at login"* and the one command that fixes it (`whatsappman daemon install`).
+
+### Verification (not shipped in the package, but why this release is trustworthy)
+
+- **Evals 51 → 88.** Four groups added, each pinning something that had already gone wrong at least once:
+  - **`boundary.eval.ts`** — the CLI's contract with everything outside it: `argv -> (stdout, stderr, exit code)`. Exit codes confined to `{0,1,130}` and taken from the handler's return, so `send && deploy` can never proceed on a failed send; no `console.log`, diagnostics on stderr, so `recent | jq` stays parseable; every prompting file guarded by `canPrompt()`, because a prompt with no TTY does not fail — it **waits forever**, a silent unbounded hang in cron.
+  - **`privacy.eval.ts`** — the send log stays metadata-only. One `body: text` on `SentLogEntry` would put every message a user ever sent on disk in plaintext, forever, with nothing failing. Now enforced on the interface, every call site, the `0o600` mode, rotation, and the claim in `docs/SECURITY.md`.
+  - **`cross-os.eval.ts`** — both Windows bugs this project has had were written on macOS, passed a green local `verify`, and were caught only by CI afterwards.
+  - **version drift + docs sweep** — `docs/FEATURES.md` had declared itself three releases behind, publicly, for the second time. Fixed by removing the hardcoded version rather than bumping it, so there is no rot source left; and the command/flag parser that guarded `USE-CASES.md` now sweeps **every** doc, including the README people copy-paste from.
+- **Every command now asserts its output**, not just that it did not crash. `smoke/all-commands.mjs` gained a `must` rubric per command; writing them found two expectations wrong (never the CLI).
+- **Watchable runs.** `npm run check:term` opens a real Terminal window and steps through the CLI a command at a time; `npm run cast` records that under a real PTY, with `--redact` masking phone numbers and usernames **before** anything reaches disk. The site gained the browser equivalent.
+
+
 ## [0.4.2] - 2026-07-30
 
 - **feat(doctor): a dependencies section, and `doctor --fix`.** `whatsappman update` shells out to `npm install -g`, which needs **git** — Baileys pulls `libsignal` from a git URL. So a missing git does not break a *running* install; it breaks the **next update**, with a bare `npm error syscall spawn git`. `doctor` never looked for git, so nothing warned you until that failed. It now reports git and npm alongside the existing node/npx checks, states git's role explicitly, and `--fix` prints the exact install command for the detected platform (`xcode-select --install` / `winget install --id Git.Git -e` / `sudo apt install git`).
