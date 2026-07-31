@@ -30,6 +30,15 @@ watching and the caller reads the exit code and nothing else. See
 | `eval/` | `npm run eval` | Is the surface we expose still correct, safe and self-consistent — and are our stated claims still true? | Offline, fast, no daemon, **static rubrics only** |
 | `smoke/` | `npm run smoke` | Does the **actual published artifact** install and work on a real OS? | Needs network, Docker and a running daemon — so it sits **outside** `npm run verify` |
 
+`npm run cast` sits alongside `smoke/`: it drives the read-only commands under
+a **real PTY** and writes a watchable HTML player plus an asciicast. It asserts
+nothing — it produces the artefact, the way the site's contact sheet does — and
+covers the one thing no other tier can, since `all-commands.mjs` runs with no
+TTY on purpose. Add `--redact` (`npm run cast:redact`) before sharing a
+recording: it masks phone numbers, usernames and home paths **before** anything
+is written, preserves column widths so the layout is unchanged, and verifies
+afterwards that nothing leaked rather than trusting the patterns.
+
 The boundary is not cosmetic. `smoke/` was briefly written as an eval, which
 broke all three of this suite's rules at once: it pulls images over the network,
 starts a daemon, and takes ~9s rather than under a second. It answers a question

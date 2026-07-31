@@ -28,6 +28,7 @@
  */
 import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 
@@ -35,6 +36,77 @@ const BIN = process.env.WAM_BIN || 'whatsappman';
 const OUT = path.resolve(process.cwd(), 'smoke/cast');
 const COLS = 92;
 const ROWS = 30;
+const REDACT = process.argv.includes('--redact');
+
+/* ── redaction ─────────────────────────────────────────────────────────────
+ * A recording of a live install is a recording of a real account. `numbers`
+ * and `recent` both print the linked phone number, `recent` prints who was
+ * messaged, and `doctor` prints the config path — which contains the macOS
+ * username. Fine on your own screen, not fine in a README or a Slack thread.
+ *
+ * `--redact` masks all of it **before** anything is written, so the raw values
+ * never reach disk in smoke/cast/ at all.
+ *
+ * Replacements are LENGTH-PRESERVING. The whole point of this recording is to
+ * show the diamond-tree layout, and that layout is column-aligned:
+ *
+ *     │  kalpesh      919925623349       connected      default
+ *
+ * Swapping a 12-digit number for "[redacted]" shifts every column after it and
+ * produces a screenshot of a layout bug that does not exist. So numbers keep
+ * their digit count, and shorter names absorb the difference from the run of
+ * spaces that follows them.
+ */
+
+/** Replace `token` with `replacement`, keeping the column width it occupied. */
+function maskToken(text, token, replacement) {
+  if (!token || token === replacement) return text;
+  const esc = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const delta = token.length - replacement.length;
+  // Two or more trailing spaces means a padded column, and the width has to be
+  // held. ONE space is just a word separator — `kalpesh — connected` — and
+  // padding it would print `demo    — connected`, inventing whitespace that was
+  // never in the layout.
+  const column = new RegExp(`${esc}( {2,})`, 'g');
+  text = text.replace(column, (_m, sp) => replacement + ' '.repeat(Math.max(1, sp.length + delta)));
+  // Anywhere else (a path, mid-sentence, end of line): a plain swap.
+  return text.split(token).join(replacement);
+}
+
+/** Keep the first two and last two digits; mask the rest, same length. */
+function maskDigits(d) {
+  return d.length <= 4 ? 'X'.repeat(d.length) : d.slice(0, 2) + 'X'.repeat(d.length - 4) + d.slice(-2);
+}
+
+const USERNAME = os.userInfo().username;
+
+function redact(text) {
+  if (!REDACT) return text;
+  let out = text;
+
+  // Phone numbers and the JIDs built from them. Bounded at 9+ digits so PIDs
+  // (5) and the digit groups inside an ISO timestamp are left alone — a
+  // timestamp is what makes `recent` legible, and it identifies nobody.
+  out = out.replace(/\b\d{9,15}\b/g, (d) => maskDigits(d));
+
+  // The OS username, which appears on its own as the session label, inside the
+  // hostname (kalpesh.local), and inside the config path (/Users/kalpesh).
+  out = maskToken(out, USERNAME, 'demo');
+
+  // Any remaining home path, in case the daemon runs as a different user.
+  out = out.replace(/\/(?:Users|home)\/[A-Za-z0-9._-]+/g, (m) =>
+    m.slice(0, m.indexOf('/', 1) + 1) + 'demo',
+  );
+  return out;
+}
+
+/** Values that should never survive redaction — checked after the fact. */
+function leaks(text) {
+  const found = [];
+  for (const m of text.matchAll(/\b\d{9,15}\b/g)) if (!/X/.test(m[0])) found.push(m[0]);
+  if (USERNAME.length > 2 && text.includes(USERNAME)) found.push(USERNAME);
+  return [...new Set(found)];
+}
 
 /**
  * The demo reel, in the order someone would actually meet the tool.
@@ -114,6 +186,7 @@ rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 
 console.log(`== recording ${SCENES.length} scenes under a real PTY ==`);
+if (REDACT) console.log('   --redact: phone numbers, usernames and home paths will be masked');
 
 /** asciicast v2: a header line, then [time, "o", data] events. */
 const events = [];
@@ -121,7 +194,10 @@ const results = [];
 let t = 0.4;
 
 for (const scene of SCENES) {
-  const r = await runInPty(scene.cmd);
+  const raw = await runInPty(scene.cmd);
+  // Redact BEFORE the output is stored anywhere. Nothing downstream — the
+  // cast, the player, the console — ever sees the unredacted text.
+  const r = { ...raw, out: redact(raw.out) };
   results.push({ ...scene, ...r });
 
   // The typed prompt line, then the output, then a beat to read it.
@@ -244,9 +320,33 @@ writeFileSync(
 </style>
 <h1>whatsappman — a real terminal session</h1>
 <p class="sub">${results.length} commands, recorded under a real PTY so the colours and layout are exactly what a user sees.
-Replayable as <code>smoke/cast/session.cast</code> with <code>asciinema play</code>.</p>
+Replayable as <code>smoke/cast/session.cast</code> with <code>asciinema play</code>.${
+  REDACT
+    ? ' <strong style="color:#25D366">Redacted</strong> — phone numbers, usernames and home paths are masked; column widths are preserved so the layout is unchanged.'
+    : ''
+}</p>
 ${scenesHtml}`,
 );
+
+// Verify the redaction actually worked rather than assuming the patterns were
+// exhaustive. A recording that is believed clean and is not is worse than one
+// nobody trusted — so this reports the leak and refuses to claim success.
+const everything = results.map((r) => r.out).join('\n');
+if (REDACT) {
+  const leaked = leaks(everything);
+  if (leaked.length) {
+    console.log(`\n\u26a0\ufe0f  REDACTION INCOMPLETE — still present: ${leaked.join(', ')}`);
+    console.log('   Do not share these files. Add the value to redact() and re-record.');
+    process.exit(1);
+  }
+  console.log('\nRedaction verified: no phone numbers, usernames or home paths remain.');
+} else {
+  const exposed = leaks(everything);
+  if (exposed.length) {
+    console.log(`\n\u2139\ufe0f  This recording contains real values: ${exposed.slice(0, 4).join(', ')}${exposed.length > 4 ? '…' : ''}`);
+    console.log('   Fine locally. Re-run with --redact before sharing it.');
+  }
+}
 
 const failed = results.filter((r) => r.code !== 0);
 console.log(`\ncast    → ${castPath}`);

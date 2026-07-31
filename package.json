@@ -28,7 +28,8 @@
     "smoke": "tsx --test smoke/*.test.ts",
     "smoke:clean": "docker rmi -f $(docker images -q whatsappman-smoke-base) 2>/dev/null; docker volume rm -f whatsappman-smoke-npm-cache 2>/dev/null; echo cleaned",
     "verify:all": "npm run verify && npm run smoke",
-    "cast": "node smoke/record-cast.mjs"
+    "cast": "node smoke/record-cast.mjs",
+    "cast:redact": "node smoke/record-cast.mjs --redact"
   },
   "engines": {
     "node": ">=18"
