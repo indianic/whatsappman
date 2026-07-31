@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TOOLS } from '../src/mcp/server.js';
@@ -68,4 +68,83 @@ test('the package name in the docs matches what is published', () => {
   // The retired private scope must not creep back into user-facing install docs.
   assert.doesNotMatch(readme, /@indianic\/whatsappman/, 'README references the retired private package');
   assert.doesNotMatch(readme, /npm\.indianic\.in/, 'README references the retired private registry');
+});
+
+/* ── version drift ─────────────────────────────────────────────────────────
+ * docs/FEATURES.md shipped its header as "Version: 0.3.0" while the package was
+ * at 0.4.2, publicly, on GitHub. This is the SECOND time: the strings were
+ * fixed by hand once and the invariant was never pinned, so it came straight
+ * back. That is the whole argument for an eval over a fix.
+ *
+ * The distinction that makes this checkable without false positives is between
+ * a doc *declaring what it is* and a doc *describing history*:
+ *
+ *   "**Version:** 0.3.0"                 <- a self-declaration. Must be current.
+ *   "@integratex/whatsappman@0.3.0"      <- a pinned install. Must be current.
+ *   "## Modules added since 0.3.0"       <- history. Correct forever.
+ *   "Verified live against the published 0.1.0"  <- history. Correct forever.
+ *
+ * So only the first two shapes are enforced. Prose about past releases stays
+ * legal, which is what keeps this eval alive rather than switched off.
+ */
+
+const PKG_VERSION = JSON.parse(read('package.json')).version as string;
+
+function docsWithVersionClaims(dir = '.'): string[] {
+  const out: string[] = [];
+  for (const e of readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
+    if (['node_modules', 'dist', 'coverage', 'shots'].includes(e.name)) continue;
+    // Dot-directories are tooling and local state, never published docs.
+    // `.remember/` in particular is a gitignored work journal whose entries are
+    // dated notes about what was true that day — "Published 0.2.1" is correct
+    // forever, exactly like a CHANGELOG line, and rewriting it would be
+    // falsifying a record rather than fixing a doc.
+    if (e.name.startsWith('.')) continue;
+    const rel = dir === '.' ? e.name : `${dir}/${e.name}`;
+    if (e.isDirectory()) out.push(...docsWithVersionClaims(rel));
+    // CHANGELOG is a historical record by definition.
+    else if (e.name.endsWith('.md') && e.name !== 'CHANGELOG.md') out.push(rel);
+  }
+  return out;
+}
+
+const VERSION_DOCS = docsWithVersionClaims();
+
+test('the version sweep reached the docs that declare one', () => {
+  assert.ok(VERSION_DOCS.includes('docs/FEATURES.md'), 'the sweep missed docs/FEATURES.md');
+  assert.ok(VERSION_DOCS.length >= 5, `only swept ${VERSION_DOCS.length} docs`);
+});
+
+test('no doc declares itself at a version the package is not at', () => {
+  const stale: string[] = [];
+  for (const f of VERSION_DOCS) {
+    for (const m of read(f).matchAll(/\*{0,2}Version:?\*{0,2}:?\s*`?v?(\d+\.\d+\.\d+)`?/gi)) {
+      if (m[1] !== PKG_VERSION) stale.push(`${f}: declares ${m[1]}, package is ${PKG_VERSION}`);
+    }
+  }
+  assert.deepEqual(stale, [], `stale version declaration — ${stale.join('; ')}`);
+});
+
+test('no doc pins an install to a version that is not current', () => {
+  // `npm i -g @integratex/whatsappman@0.3.0` in a doc installs a build from
+  // months ago. Unversioned (or @latest) is what a reader should be given.
+  const pkgName = JSON.parse(read('package.json')).name as string;
+  const pinned: string[] = [];
+  for (const f of VERSION_DOCS) {
+    const re = new RegExp(`${pkgName.replace(/[/@]/g, '\\$&')}@(\\d+\\.\\d+\\.\\d+)`, 'g');
+    for (const m of read(f).matchAll(re)) {
+      if (m[1] !== PKG_VERSION) pinned.push(`${f}: ${m[0]}`);
+    }
+  }
+  assert.deepEqual(pinned, [], `doc pins a stale install version: ${pinned.join(', ')}`);
+});
+
+test('the README version badge stays dynamic', () => {
+  // The badge reads the live version from the registry. Replacing it with a
+  // hardcoded number reintroduces exactly the drift the tests above prevent,
+  // in the most-read file in the repo.
+  const readme = read('README.md');
+  assert.match(readme, /img\.shields\.io\/npm\/v\//, 'the npm version badge must be the dynamic shields.io one');
+  const hardcoded = [...readme.matchAll(/badge\/version-(\d+\.\d+\.\d+)/g)].map((m) => m[0]);
+  assert.deepEqual(hardcoded, [], `README hardcodes a version badge: ${hardcoded.join(', ')}`);
 });

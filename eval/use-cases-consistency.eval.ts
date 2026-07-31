@@ -86,3 +86,68 @@ test('every flag in USE-CASES.md exists in the CLI', () => {
     `USE-CASES.md uses flag(s) the CLI parser does not recognise: ${unknown.join(', ')}`,
   );
 });
+
+/* ── every other doc, held to the same standard ────────────────────────────
+ * The checks above cover USE-CASES.md because that file makes the promise
+ * explicitly. But README.md is what someone reads *first* and copy-pastes from,
+ * and docs/CLI.md is where they look when a command does not behave. A renamed
+ * flag rots there exactly as easily and with more people watching.
+ *
+ * The parser is already written; only its input set changes. CHANGELOG is
+ * excluded because it is a historical record — an entry describing a flag that
+ * was later removed is correct, not stale.
+ */
+
+/** Every tracked markdown file, ignoring build output and dependencies. */
+function markdownFiles(dir = '.'): string[] {
+  const out: string[] = [];
+  for (const e of readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
+    if (['node_modules', '.git', 'dist', 'coverage', 'shots'].includes(e.name)) continue;
+    const rel = dir === '.' ? e.name : `${dir}/${e.name}`;
+    if (e.isDirectory()) out.push(...markdownFiles(rel));
+    else if (e.name.endsWith('.md') && e.name !== 'CHANGELOG.md') out.push(rel);
+  }
+  return out;
+}
+
+/** Commands and flags cited inside fenced code blocks of one markdown file. */
+function citationsIn(src: string): { commands: Set<string>; flags: Set<string> } {
+  const blocks = [...src.matchAll(/```[a-z]*\n([\s\S]*?)```/g)].map((m) => m[1]);
+  const commands = new Set<string>();
+  const flags = new Set<string>();
+  for (let seg of stripSubshells(blocks.join('\n')).split(/\bwhatsappman\s+/).slice(1)) {
+    const cmd = seg.match(/^([a-z][a-z-]*)/);
+    if (cmd) commands.add(cmd[1]);
+    seg = seg.split('\n')[0].split(/\s(?:&&|\|\||\||;)\s/)[0];
+    for (const f of seg.matchAll(/(--[a-z][a-z-]*)/g)) flags.add(f[1]);
+  }
+  return { commands, flags };
+}
+
+const DOCS = markdownFiles();
+
+test('the docs sweep found the files a reader actually starts from', () => {
+  // Vacuity guard: if the walk breaks, the two tests below check nothing.
+  assert.ok(DOCS.includes('README.md'), 'README.md not reached by the docs walk');
+  assert.ok(DOCS.length >= 5, `only found ${DOCS.length} markdown files`);
+});
+
+test('every whatsappman command cited in any doc exists in the CLI', () => {
+  const bad: string[] = [];
+  for (const f of DOCS) {
+    for (const c of citationsIn(read(f)).commands) {
+      if (!VALID_COMMANDS.has(c)) bad.push(`${f}: whatsappman ${c}`);
+    }
+  }
+  assert.deepEqual(bad, [], `docs cite commands the CLI does not define: ${bad.join(', ')}`);
+});
+
+test('every flag cited in any doc exists in the CLI', () => {
+  const bad: string[] = [];
+  for (const f of DOCS) {
+    for (const fl of citationsIn(read(f)).flags) {
+      if (!VALID_FLAGS.has(fl)) bad.push(`${f}: ${fl}`);
+    }
+  }
+  assert.deepEqual(bad, [], `docs cite flags the CLI parser does not recognise: ${bad.join(', ')}`);
+});

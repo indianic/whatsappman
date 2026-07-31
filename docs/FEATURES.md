@@ -1,6 +1,6 @@
 # WhatsAppMan — Features, Flow & How It Works
 
-> **Package:** `@integratex/whatsappman` · **Version:** 0.3.0 · **Author:** kalpesh · **License:** MIT
+> **Package:** `@integratex/whatsappman` · **Version:** see [npm](https://www.npmjs.com/package/@integratex/whatsappman) · **Author:** kalpesh · **License:** MIT
 > **Registry:** [npmjs.com](https://www.npmjs.com/package/@integratex/whatsappman) (public) · **Status:** published & working (macOS verified live)
 
 This document explains WhatsAppMan for **everyone** — a plain-English part for

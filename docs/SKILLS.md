@@ -212,3 +212,19 @@ Adding a tool is therefore never just plumbing: `eval/safety-invariants.eval.ts`
 pins that no tool reaches the daemon's raw `send_text`/`send_bulk`, that
 `confirm_send` accepts nothing but a `draftId`, and that only `draft_message`
 accepts message content. Any new tool has to survive those assertions first.
+
+## What is written down when you send
+
+Nothing you write is. A completed send appends **one metadata line** to
+`~/.whatsappman/sent.jsonl` — timestamp, which of your numbers sent it, the
+recipient JID and display name, the kind (`text`/`image`/…), the WhatsApp
+message id, and whether it succeeded. **No message body, no caption, no
+attachment content, and nothing inbound at all.** That is what `list_recent`
+reads, which is why it can tell you *that* you messaged someone at 14:02 but
+never *what* you said.
+
+This is not a convention anyone has to remember. `eval/privacy.eval.ts` fails
+the build if `SentLogEntry` gains a content-bearing field, if any `appendSent`
+call site passes one, if the file stops being written `0o600`, or if it loses
+its size cap — because a log with message bodies in it would break the promise
+retroactively, for every message already sent.

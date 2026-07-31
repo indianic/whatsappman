@@ -151,7 +151,7 @@ Baileys is an unofficial reverse-engineering of WhatsApp Web — great for perso
 - [docs/CLI.md](docs/CLI.md) — every CLI command · [docs/SKILLS.md](docs/SKILLS.md) — the 12 MCP tools your AI can call
 - [docs/USE-CASES.md](docs/USE-CASES.md) — 250+ documented use cases, honestly labelled by what ships today
 - [docs/SECURITY.md](docs/SECURITY.md) — threat model & hardening · [docs/CROSS-OS.md](docs/CROSS-OS.md) — platform matrix
-- [eval/README.md](eval/README.md) — the three test tiers and the invariants keeping the send gate honest
+- [eval/README.md](eval/README.md) — the three verification tiers and the 88 rubrics keeping the send gate, the privacy promise and the CLI contract honest
 - [CHANGELOG.md](CHANGELOG.md) — releases
 
 ## Acknowledgements

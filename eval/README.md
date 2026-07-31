@@ -5,7 +5,22 @@
 These evaluate **the surface we hand someone — a model or a person — and the
 claims we make about it**. Not the internals the unit tests in `test/` cover.
 They are deterministic and offline: no model is called, no network, no daemon,
-no WhatsApp session. They run in CI in under a second.
+no WhatsApp session. **88 rubrics**, all of them in well under a second.
+
+They fall into two groups. Most check that the surface is **internally
+consistent** — commands agree with the docs, tools map to handlers, schemas are
+well-formed. A smaller group checks the **boundary**: the four things a caller
+outside this process can actually observe.
+
+```
+argv  ->  ( stdout , stderr , exit code )   + what it touched on disk
+```
+
+That second group exists because a CLI, unlike a website, has no renderable
+artefact to inspect — and because this one is built to run **unattended**
+(`whatsappman run --` in CI, cron digests, agent loops), where nobody is
+watching and the caller reads the exit code and nothing else. See
+[PLAN.md](PLAN.md) for how that split was reasoned about.
 
 ## Three tiers, three different questions
 
@@ -49,6 +64,9 @@ Two real failures motivated them:
 | `docs-consistency.eval.ts` | Countable doc claims stay true — the README badge and prose tool counts, `docs/FEATURES.md`, the "no raw send tool" promise (present in docs *and* true in code), and that no retired `@indianic` / `npm.indianic.in` reference creeps back into user-facing install docs. |
 | `use-cases-consistency.eval.ts` | `docs/USE-CASES.md` promises every command and flag in it was checked against the real parser. Derives the actual surface from `src/cli` and fails on the first token the CLI would not recognise, so 250 documented cases cannot drift into fiction. |
 | `cli-surface.eval.ts` | The **human** CLI stays coherent: every command appears in `whatsappman help` *and* in `docs/CLI.md`, no file hand-rolls a `readline` prompt (they all go through `prompts.ts`, so cancelling always works and never counts as consent), and the destructive commands really do use the shared confirmation. Found `send-bulk` undocumented on its first run. |
+| `boundary.eval.ts` | The CLI's contract with everything outside it: `argv -> (stdout, stderr, exit code)`. Exit codes confined to `{0,1,130}` and taken from the handler's return, so `send && deploy` cannot proceed on a failed send; no `console.log`, diagnostics on stderr, so `recent \| jq` stays parseable; every prompting file guards with `canPrompt()`, because a prompt with no TTY does not fail — it **waits forever**, a silent unbounded hang in cron; colour only via picocolors, with `link.ts` exempted and the exemption pinned to its reason. |
+| `privacy.eval.ts` | The send log stays **metadata-only**. `src/audit.ts` promises it in a comment; a comment stops nobody. One `body: text` on `SentLogEntry` and every message a user ever sent is on disk in plaintext, forever, with nothing failing. Enforced on the interface, on every `appendSent` call site, on the `0o600` mode, on rotation, and on `docs/SECURITY.md` still making the claim reviewers rely on. |
+| `cross-os.eval.ts` | The assumptions invisible on the machine that wrote them. Both Windows bugs this project has had were written on macOS, passed a green local `verify`, and were caught by CI afterwards. Deliberately narrow — `install.ts` legitimately contains `/usr/bin` because it generates launchd and systemd units, so a blunt POSIX grep would flag all of it and be switched off within a week. |
 | `ipc-parity.eval.ts` | The IPC contract's three halves agree: the `METHODS` allowlist, the per-method params schema, and the daemon's handler map. A method in one but not another fails only at runtime — which is exactly how `rename` once reached a user as `malformed request`. Also asserts no state-changing method accepts empty params. |
 
 ## What they do *not* prove
