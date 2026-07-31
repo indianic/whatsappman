@@ -9,3 +9,4 @@ dist/
 .env.*
 # agent-tool scratch, never part of the source tree
 .remember/
+smoke/cast/

@@ -1,7 +1,7 @@
 {
   "name": "@integratex/whatsappman",
   "version": "0.4.2",
-  "description": "MCP server + CLI to send WhatsApp messages (text, image, document, location, contact) from any Claude CLI session, via a Baileys-backed always-on local daemon — multi-number, draft/confirm, no third-party API, no server, no database. macOS, Linux, Windows.",
+  "description": "MCP server + CLI to send WhatsApp messages (text, image, document, location, contact) from any Claude CLI session, via a Baileys-backed always-on local daemon \u2014 multi-number, draft/confirm, no third-party API, no server, no database. macOS, Linux, Windows.",
   "author": "kalpesh",
   "type": "module",
   "publishConfig": {
@@ -27,7 +27,8 @@
     "verify": "npm run lint && npm run typecheck && npm run build && npm test && npm run eval",
     "smoke": "tsx --test smoke/*.test.ts",
     "smoke:clean": "docker rmi -f $(docker images -q whatsappman-smoke-base) 2>/dev/null; docker volume rm -f whatsappman-smoke-npm-cache 2>/dev/null; echo cleaned",
-    "verify:all": "npm run verify && npm run smoke"
+    "verify:all": "npm run verify && npm run smoke",
+    "cast": "node smoke/record-cast.mjs"
   },
   "engines": {
     "node": ">=18"
