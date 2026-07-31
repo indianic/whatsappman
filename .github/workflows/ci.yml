@@ -32,8 +32,16 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Evals
-        run: npm run eval
+      # eval/ is deliberately not mirrored to GitHub — the rubrics read the full
+      # internal tree (docs/PLAN.md, CONTEXT.md and friends), which is stripped
+      # here, so they could not pass even if they were present. They gate every
+      # release locally via `npm run verify`. This step stays so the omission is
+      # visible in the log rather than silently absent.
+      - name: Evals (local-only tier)
+        run: |
+          if [ -d eval ]; then npm run eval; else
+            echo "eval/ is not part of the public mirror — run \`npm run verify\` in the source repo"
+          fi
 
   # The cross-platform job. whatsappman installs an OS autostart job, spawns
   # child processes and resolves paths, and none of that can be verified from one

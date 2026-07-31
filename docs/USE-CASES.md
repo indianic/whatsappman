@@ -555,4 +555,4 @@ Any sensor or controller that can run a command (or hit a webhook) can page you.
 - [CLI.md](CLI.md) — every command in full
 - [SKILLS.md](SKILLS.md) — the 12 MCP tools your AI can call
 - [SECURITY.md](SECURITY.md) — credential handling and the safety model
-- [../eval/README.md](../eval/README.md) — the invariants keeping the send gate honest
+- Every command and flag on this page is checked against the real CLI parser before release, so nothing here is aspirational syntax.
